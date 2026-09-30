@@ -1,0 +1,24 @@
+# venv & Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Database lokal
+*.db
+*.sqlite
+*.sqlite3
+
+# Env & rahasia
+.env
+.env.*
+!.env.example
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+
+# Log
+*.log
