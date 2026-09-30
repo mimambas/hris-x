@@ -8,6 +8,7 @@ from app.api.v1 import (
     audit_logs,
     auth,
     comp_info,
+    custom_fields,
     job_info,
     org,
     persons,
@@ -24,3 +25,4 @@ api_router.include_router(comp_info.router)
 api_router.include_router(audit_logs.router)
 api_router.include_router(rbac.router)
 api_router.include_router(org.router)
+api_router.include_router(custom_fields.router)

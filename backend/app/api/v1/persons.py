@@ -18,6 +18,7 @@ from app.schemas.schemas import (
     PersonCreate,
     PersonOut,
 )
+from app.services import population as pop_service
 from app.services.audit import write_audit
 
 router = APIRouter(tags=["master-data"])
@@ -72,15 +73,14 @@ def create_person(
     dependencies=[Depends(require_permission("person", "view"))],
 )
 def list_persons(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    return (
-        db.execute(
-            select(Person)
-            .where(Person.tenant_id == user.tenant_id)
-            .order_by(Person.full_name)
-        )
-        .scalars()
-        .all()
-    )
+    """Daftar person, otomatis difilter sesuai target population user
+    (Sprint 2, PRD 15.5): manajer melihat timnya, karyawan melihat
+    dirinya sendiri, HR/admin melihat semua."""
+    stmt = select(Person).where(Person.tenant_id == user.tenant_id)
+    visible = pop_service.get_visible_person_ids(db, user)
+    if visible is not None:
+        stmt = stmt.where(Person.id.in_(visible))
+    return db.execute(stmt.order_by(Person.full_name)).scalars().all()
 
 
 @router.get(
@@ -95,6 +95,9 @@ def get_person(
 ):
     person = db.get(Person, person_id)
     if person is None or person.tenant_id != user.tenant_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Person tidak ditemukan")
+    if not pop_service.can_view_person(db, user, person_id):
+        # 404 (bukan 403) agar tidak membocorkan keberadaan data di luar populasi.
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Person tidak ditemukan")
     return person
 

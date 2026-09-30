@@ -1,4 +1,4 @@
-# HRIS-X Backend — Fondasi Sprint 1
+# HRIS-X Backend — Fondasi Sprint 1 + Platform Sprint 2
 
 Fondasi platform HRIS-X sesuai PRD v1.0 (HRIS-X), Sprint S1:
 **Tenant, auth, RBP dasar, audit, layanan effective dating.**
@@ -78,21 +78,67 @@ curl -s "localhost:8000/api/v1/job-info/timeline?employment_id=<uuid>" \
 # Audit per karyawan
 curl -s "localhost:8000/api/v1/audit-logs?employment_id=<uuid>" \
   -H "Authorization: Bearer $TOKEN"
+
+# Org chart per tanggal (S2): struktur yang berlaku 2026-09-30
+curl -s "localhost:8000/api/v1/org/chart?as_of=2026-09-30" \
+  -H "Authorization: Bearer $TOKEN"
+
+# Pindah unit ke parent baru berlaku 2026-10-15 (restrukturisasi)
+curl -s -X POST localhost:8000/api/v1/org/units/<uuid>/versions \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"parent_id":"<uuid>","valid_from":"2026-10-15","event":"Reorganisasi","event_reason":"Efisiensi","reason":"demo"}'
+
+# Custom field: definisi lalu isi nilai untuk satu person
+curl -s -X POST localhost:8000/api/v1/custom-fields/definitions \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"object_name":"person","field_key":"gol_darah","label_id":"Golongan Darah","field_type":"select","options":[{"value":"A","label_id":"A","active":true},{"value":"B","label_id":"B","active":true}],"reason":"demo"}'
+curl -s -X POST localhost:8000/api/v1/custom-fields/values \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"definition_id":"<uuid>","record_id":"<person-uuid>","value":"A","reason":"demo"}'
 ```
 
 Akun seed: `admin@hashiru.id` / `Password123!` (superadmin),
 `dewi@hashiru.id` (Manajer, via grup dinamis), `budi@hashiru.id` (Karyawan).
 
-## Yang BELUM dikerjakan (ruang lingkup S2+)
+## Yang baru di Sprint 2 (PRD 15.1, 9.2)
 
-- Struktur organisasi bertanggal efektif penuh (S1: master data baca saja)
+- **Org bertanggal efektif** (CHR-001): LegalEntity/OrgUnit/Location/
+  CostCenter memakai pola identitas + info berversi (ADR-0004).
+  `GET /org/chart?as_of=YYYY-MM-DD` → pohon hierarki per tanggal;
+  `POST /org/units/{id}/versions` untuk rename/pindah parent/nonaktif;
+  `GET .../timeline` untuk riwayat. Siklus parent ditolak; unit
+  berpenghuni tidak bisa dinonaktifkan.
+- **Custom field** (PLT-001/003, CHR-009): definisi via API tanpa deploy
+  (ADR-0005) — tipe text/number/date/select/lookup/attachment, picklist
+  berlabel ID/EN, nilai di kolom bertipe. Nonaktif/soft-delete tidak
+  menghapus data lama. Izin per field: `custom:<field_key>`.
+- **Target population** (PRD 15.5): `RoleAssignment.target_population`
+  (`all`/`self`/`team`); `/persons` otomatis terfilter — manajer
+  melihat direct report, karyawan melihat dirinya sendiri.
+- **Postgres RLS**: `migrations/001_rls.sql` (policy `app.tenant_id` +
+  `SET LOCAL`) + `migrations/verify_rls.py`. SQLite tetap untuk
+  dev/test. Lihat "Postgres RLS" di bawah.
+
+## Postgres RLS (produksi)
+
+1. Terapkan sekali sebagai pemilik DB:
+   `psql "$DATABASE_URL" -f migrations/001_rls.sql`
+2. Setiap transaksi aplikasi WAJIB: `SET LOCAL app.tenant_id='<uuid>'`
+   (konteks hilang otomatis saat transaksi selesai — aman untuk pool).
+3. Role aplikasi hanya diberi GRANT DML (bukan pemilik tabel) agar
+   policy dievaluasi.
+4. Verifikasi: `DATABASE_URL=... python migrations/verify_rls.py`
+   (butuh Postgres asli; SQLite dev/test tidak mendukung RLS —
+   isolasi tenant di sana tetap di level aplikasi).
+
+## Yang BELUM dikerjakan (ruang lingkup S3+)
+
 - Rules engine (PLT-020 s.d. PLT-024)
 - Workflow engine & approval (PLT-030 s.d. PLT-037)
-- Target population per-user / scoping karyawan-ke-data-sendiri
 - SoD, masking data sensitif, proxy login, laporan izin (PLT-042 s.d. PLT-045)
 - Rantai hash audit (PLT-051), audit akses baca field sensitif (PLT-052)
-- Postgres RLS, notifikasi, SSO/OIDC, import Excel, mobile/ESS
-- Modul: absensi, cuti, payroll, rekrutmen, dst. (Sprint S2+)
+- Notifikasi, SSO/OIDC, import Excel, mobile/ESS
+- Modul: absensi, cuti, payroll, rekrutmen, dst. (Sprint S3+)
 
 ## Penyederhanaan vs PRD (jujur)
 

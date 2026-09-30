@@ -21,6 +21,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -143,7 +144,15 @@ class PermissionGroup(Base):
 
 
 class RoleAssignment(Base):
-    """Sumbu ketiga: role diberikan kepada group -> target population."""
+    """Sumbu ketiga: role diberikan kepada group -> target population.
+
+    target_population (JSON) menentukan DATA SIAPA yang tercakup:
+      {"type": "all"}  — seluruh data tenant (default)
+      {"type": "self"} — hanya record milik user sendiri
+      {"type": "team"} — direct report: employment yang manager_employment_id-nya
+                         adalah employment user (per JobInfo yang berlaku hari ini)
+    Dievaluasi per-request di app/services/population.py (Sprint 2).
+    """
 
     __tablename__ = "role_assignments"
 
@@ -154,6 +163,9 @@ class RoleAssignment(Base):
     )
     group_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("permission_groups.id"), nullable=False, index=True
+    )
+    target_population: Mapped[dict] = mapped_column(
+        JSON, nullable=False, default=lambda: {"type": "all"}
     )
 
     __table_args__ = (
@@ -192,38 +204,154 @@ class FieldPermission(Base):
 
 
 # ---------------------------------------------------------------------------
-# Struktur organisasi (S1: master data; effective dating penuh = S2)
+# Struktur organisasi bertanggal efektif (Sprint 2, CHR-001).
+#
+# Pola: tabel identitas (id stabil, dirujuk FK dari JobInfo dsb.) +
+# tabel info berversi (EffectiveDatedMixin). Atribut yang berubah dari
+# waktu ke waktu (nama, parent, legal entity, status aktif) hidup di
+# tabel info; record baru = versi baru, bukan update (CHR-004: setiap
+# perubahan wajib punya event + event reason).
 # ---------------------------------------------------------------------------
+
+
+class EffectiveDatedMixin:
+    """Kolom baku semua blok bertanggal efektif (bukan tabel)."""
+
+    valid_from: Mapped[date] = mapped_column(Date, nullable=False)
+    valid_to: Mapped[date] = mapped_column(Date, nullable=False, default=MAX_DATE)
+    seq_no: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    event: Mapped[str] = mapped_column(String(100), nullable=False)
+    event_reason: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=False
+    )
+
+
 class LegalEntity(Base):
+    """Identitas legal entity (PT/NPWP pemotong). Atribut berversi di LegalEntityInfo."""
+
     __tablename__ = "legal_entities"
 
     id: Mapped[uuid.UUID] = _pk()
     tenant_id: Mapped[uuid.UUID] = _tenant_fk()
-    name: Mapped[str] = mapped_column(String(200), nullable=False)
-    npwp: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
 
-class OrgUnit(Base):
-    __tablename__ = "org_units"
+class LegalEntityInfo(Base, EffectiveDatedMixin):
+    __tablename__ = "legal_entity_info"
 
     id: Mapped[uuid.UUID] = _pk()
     tenant_id: Mapped[uuid.UUID] = _tenant_fk()
     legal_entity_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("legal_entities.id"), nullable=False, index=True
     )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    npwp: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "legal_entity_id", "valid_from", "seq_no",
+            name="uq_leinfo_le_from_seq",
+        ),
+    )
+
+
+class OrgUnit(Base):
+    """Identitas unit organisasi. Hierarki (grup -> legal entity -> BU ->
+    divisi -> departemen -> tim) dibentuk via parent_id di OrgUnitInfo
+    sehingga perpindahan unit antar-parent adalah versi baru bertanggal
+    efektif, bukan update."""
+
+    __tablename__ = "org_units"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+
+
+class OrgUnitInfo(Base, EffectiveDatedMixin):
+    __tablename__ = "org_unit_info"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    org_unit_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("org_units.id"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    # Parent merujuk IDENTITAS unit (org_units.id), bukan baris versi,
+    # agar relasi tetap stabil walau parent berganti versi.
     parent_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("org_units.id"), nullable=True, index=True
     )
-    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    legal_entity_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("legal_entities.id"), nullable=False, index=True
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "org_unit_id", "valid_from", "seq_no",
+            name="uq_ouinfo_ou_from_seq",
+        ),
+    )
 
 
 class Location(Base):
+    """Identitas lokasi kerja. Atribut berversi di LocationInfo."""
+
     __tablename__ = "locations"
 
     id: Mapped[uuid.UUID] = _pk()
     tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+
+
+class LocationInfo(Base, EffectiveDatedMixin):
+    __tablename__ = "location_info"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    location_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("locations.id"), nullable=False, index=True
+    )
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     timezone: Mapped[str] = mapped_column(String(50), nullable=False, default="Asia/Jakarta")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "location_id", "valid_from", "seq_no",
+            name="uq_locinfo_loc_from_seq",
+        ),
+    )
+
+
+class CostCenter(Base):
+    """Identitas cost center untuk jurnal payroll per pusat biaya (CHR-001)."""
+
+    __tablename__ = "cost_centers"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+
+
+class CostCenterInfo(Base, EffectiveDatedMixin):
+    __tablename__ = "cost_center_info"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    cost_center_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("cost_centers.id"), nullable=False, index=True
+    )
+    code: Mapped[str] = mapped_column(String(50), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    org_unit_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("org_units.id"), nullable=True, index=True
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "cost_center_id", "valid_from", "seq_no",
+            name="uq_ccinfo_cc_from_seq",
+        ),
+    )
 
 
 class Job(Base):
@@ -277,19 +405,6 @@ class Employment(Base):
 # ---------------------------------------------------------------------------
 # Blok bertanggal efektif (PRD 15.2)
 # ---------------------------------------------------------------------------
-class EffectiveDatedMixin:
-    """Kolom baku semua blok bertanggal efektif (bukan tabel)."""
-
-    valid_from: Mapped[date] = mapped_column(Date, nullable=False)
-    valid_to: Mapped[date] = mapped_column(Date, nullable=False, default=MAX_DATE)
-    seq_no: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
-    event: Mapped[str] = mapped_column(String(100), nullable=False)
-    event_reason: Mapped[str] = mapped_column(String(255), nullable=False)
-    created_by_user_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("users.id"), nullable=False
-    )
-
-
 class JobInfo(Base, EffectiveDatedMixin):
     __tablename__ = "job_info"
 
@@ -337,6 +452,92 @@ class CompInfo(Base, EffectiveDatedMixin):
             "employment_id", "valid_from", "seq_no", name="uq_compinfo_emp_from_seq"
         ),
         Index("ix_compinfo_emp_from", "employment_id", "valid_from"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Custom field / metadata (PRD 15.1, PLT-001 & PLT-003, CHR-009).
+#
+# Admin mendefinisikan field tanpa deploy. Nilai disimpan di kolom
+# bertipe (bukan satu JSON blob) agar bisa difilter/diurut di DB.
+# - Nonaktifkan definisi -> data lama tetap terbaca (PLT-003).
+# - Hapus definisi = soft delete (is_active=False) + audit.
+# ---------------------------------------------------------------------------
+CUSTOM_FIELD_OBJECTS = (
+    "person",
+    "employment",
+    "job_info",
+    "comp_info",
+    "org_unit",
+    "legal_entity",
+    "location",
+    "cost_center",
+)
+
+CUSTOM_FIELD_TYPES = ("text", "number", "date", "select", "lookup", "attachment")
+
+# Target lookup yang didukung untuk field_type="lookup".
+LOOKUP_TARGETS = ("org_unit", "legal_entity", "location", "job", "position", "person")
+
+
+class CustomFieldDefinition(Base):
+    __tablename__ = "custom_field_definitions"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    object_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    field_key: Mapped[str] = mapped_column(String(50), nullable=False)
+    label_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    label_en: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    field_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # select -> [{"value","label_id","label_en","is_active"}]
+    # lookup -> {"target": "<salah satu LOOKUP_TARGETS>"}
+    options: Mapped[dict | list] = mapped_column(JSON, nullable=False, default=list)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "object_name", "field_key",
+            name="uq_cfdef_tenant_obj_key",
+        ),
+    )
+
+
+class CustomFieldValue(Base):
+    __tablename__ = "custom_field_values"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    definition_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("custom_field_definitions.id"), nullable=False, index=True
+    )
+    # UUID (string) record target; satu nilai per (definisi, record).
+    record_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    value_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    value_number: Mapped[float | None] = mapped_column(
+        Numeric(20, 4), nullable=True
+    )
+    value_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    updated_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "definition_id", "record_id", name="uq_cfval_def_record"
+        ),
+        Index("ix_cfval_tenant_def", "tenant_id", "definition_id"),
     )
 
 

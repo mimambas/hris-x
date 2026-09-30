@@ -33,7 +33,16 @@ ACTION_FLAG = {
 }
 
 # Field JobInfo yang boleh dipakai di population_rule.
-_GROUP_CONTEXT_FIELDS = {"location_id", "org_unit_id", "job_id", "legal_entity_id"}
+_GROUP_CONTEXT_FIELDS = {
+    "location_id",
+    "org_unit_id",
+    "job_id",
+    "legal_entity_id",
+    # Sprint 2: atasan langsung user (employment id) — memungkinkan grup
+    # dinamis "tim saya", mis. {"field": "manager_employment_id", "op": "=",
+    # "value": "<employment_uuid_atasan>"}.
+    "manager_employment_id",
+}
 
 
 def get_user_context(db: Session, user) -> dict | None:
@@ -80,6 +89,8 @@ def get_user_context(db: Session, user) -> dict | None:
                 "job_id": str(job.job_id),
             }
         )
+        if job.manager_employment_id is not None:
+            ctx["manager_employment_id"] = str(job.manager_employment_id)
     return ctx
 
 

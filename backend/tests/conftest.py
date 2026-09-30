@@ -33,8 +33,11 @@ from app.models import (
     Job,
     JobInfo,
     LegalEntity,
+    LegalEntityInfo,
     Location,
+    LocationInfo,
     OrgUnit,
+    OrgUnitInfo,
     PermissionGroup,
     PermissionRole,
     Person,
@@ -100,18 +103,54 @@ def ctx(app):
         ta = Tenant(name="Hashiru", slug="hashiru")
         db.add(ta)
         db.flush()
+        # Admin dibuat di awal agar bisa menjadi created_by record fixture.
+        admin_a = _mkuser(db, ta.id, "admin_a@x.id", superadmin=True)
 
-        le = LegalEntity(tenant_id=ta.id, name="PT Hashiru", npwp="01")
-        db.add(le)
-        db.flush()
-        loc_a = Location(tenant_id=ta.id, name="Loc A")
-        loc_b = Location(tenant_id=ta.id, name="Loc B")
-        loc_c = Location(tenant_id=ta.id, name="Loc C")
-        db.add_all([loc_a, loc_b, loc_c])
-        db.flush()
-        ou = OrgUnit(tenant_id=ta.id, legal_entity_id=le.id, name="Eng")
-        db.add(ou)
-        db.flush()
+        # ---- Struktur organisasi S2: identitas + info berversi ----
+        org_from = date(2020, 1, 1)
+
+        def _mk_le(name, npwp):
+            row = LegalEntity(tenant_id=ta.id)
+            db.add(row)
+            db.flush()
+            ed.insert_record(
+                db=db, tenant_id=ta.id, model=LegalEntityInfo,
+                identity_field="legal_entity_id", identity_value=row.id,
+                valid_from=org_from,
+                values={"name": name, "npwp": npwp},
+                event="Pendirian", event_reason="Fixture", created_by=admin_a.id)
+            return row
+
+        def _mk_loc(name):
+            row = Location(tenant_id=ta.id)
+            db.add(row)
+            db.flush()
+            ed.insert_record(
+                db=db, tenant_id=ta.id, model=LocationInfo,
+                identity_field="location_id", identity_value=row.id,
+                valid_from=org_from,
+                values={"name": name, "timezone": "Asia/Jakarta"},
+                event="Pembukaan", event_reason="Fixture", created_by=admin_a.id)
+            return row
+
+        def _mk_ou(name, le_row, parent=None):
+            row = OrgUnit(tenant_id=ta.id)
+            db.add(row)
+            db.flush()
+            ed.insert_record(
+                db=db, tenant_id=ta.id, model=OrgUnitInfo,
+                identity_field="org_unit_id", identity_value=row.id,
+                valid_from=org_from,
+                values={"name": name, "parent_id": parent.id if parent else None,
+                        "legal_entity_id": le_row.id, "is_active": True},
+                event="Pembentukan", event_reason="Fixture", created_by=admin_a.id)
+            return row
+
+        le = _mk_le("PT Hashiru", "01")
+        loc_a = _mk_loc("Loc A")
+        loc_b = _mk_loc("Loc B")
+        loc_c = _mk_loc("Loc C")
+        ou = _mk_ou("Eng", le)
         job_stf = Job(tenant_id=ta.id, code="STF", title="Staff")
         job_mgr = Job(tenant_id=ta.id, code="MGR", title="Manager")
         db.add_all([job_stf, job_mgr])
@@ -151,7 +190,9 @@ def ctx(app):
             RoleAssignment(tenant_id=ta.id, role_id=r_empty.id, group_id=g_all.id),
             RoleAssignment(tenant_id=ta.id, role_id=r_hr.id, group_id=g_hr.id),
             RoleAssignment(tenant_id=ta.id, role_id=r_ins.id, group_id=g_ins.id),
-            RoleAssignment(tenant_id=ta.id, role_id=r_mgr.id, group_id=g_mgr.id),
+            # Sprint 2: manajer hanya melihat direct report-nya (PRD 15.5).
+            RoleAssignment(tenant_id=ta.id, role_id=r_mgr.id, group_id=g_mgr.id,
+                           target_population={"type": "team"}),
         ])
         grant(r_hr, "*", can_view=True, can_view_history=True, can_insert=True,
               can_correct=True, can_delete=True)
@@ -160,7 +201,6 @@ def ctx(app):
         grant(r_mgr, "person", can_view=True, can_view_history=True)
 
         # ---- User + person/employment/job ----
-        admin_a = _mkuser(db, ta.id, "admin_a@x.id", superadmin=True)
         p_full, e_full, _ = _mkperson_emp_job(
             db, ta.id, "1111111111111111", "Full", le.id, loc_a.id,
             job_stf.id, ou.id, admin_a.id)
@@ -186,7 +226,7 @@ def ctx(app):
         p_b = Person(tenant_id=tb.id, nik="9999999999999999", full_name="Orang B")
         db.add(p_b)
         db.flush()
-        le_b = LegalEntity(tenant_id=tb.id, name="PT Acme")
+        le_b = LegalEntity(tenant_id=tb.id)
         db.add(le_b)
         db.flush()
         e_b = Employment(tenant_id=tb.id, person_id=p_b.id,

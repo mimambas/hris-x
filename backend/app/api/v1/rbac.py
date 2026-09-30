@@ -185,13 +185,23 @@ def assign_role_to_group(
     )
     if exists:
         raise HTTPException(status.HTTP_409_CONFLICT, "Assignment sudah ada")
+    pop = body.target_population or {"type": "all"}
+    if not isinstance(pop, dict) or pop.get("type") not in ("all", "self", "team"):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "target_population.type harus 'all', 'self', atau 'team'",
+        )
     assignment = RoleAssignment(
-        tenant_id=user.tenant_id, role_id=role.id, group_id=group.id
+        tenant_id=user.tenant_id,
+        role_id=role.id,
+        group_id=group.id,
+        target_population=pop,
     )
     db.add(assignment)
     db.flush()
     _audit(db, user, request, "create", "role_assignment", assignment.id,
-           {"role_id": str(role.id), "group_id": str(group.id)}, body.reason)
+           {"role_id": str(role.id), "group_id": str(group.id),
+            "target_population": pop}, body.reason)
     db.commit()
     return {"id": str(assignment.id)}
 

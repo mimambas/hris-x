@@ -180,6 +180,8 @@ class GroupOut(BaseModel):
 
 class AssignmentCreate(BaseModel):
     group_id: uuid.UUID
+    # {"type": "all"|"self"|"team"} — default "all" (perilaku S1).
+    target_population: dict = Field(default_factory=lambda: {"type": "all"})
     reason: str = Field(min_length=1, max_length=500)
 
 
@@ -259,3 +261,194 @@ class PositionOut(BaseModel):
     job_id: uuid.UUID
     org_unit_id: uuid.UUID
     name: str
+
+
+# ------------------------------------------------------------------ Org bertanggal efektif (Sprint 2)
+class OrgVersionBase(BaseModel):
+    valid_from: date
+    event: str = Field(min_length=1, max_length=100)
+    event_reason: str = Field(min_length=1, max_length=255)
+    reason: str = Field(min_length=1, max_length=500)  # alasan audit
+
+
+class LegalEntityCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    npwp: str | None = Field(default=None, max_length=32)
+    valid_from: date
+    event: str = Field(min_length=1, max_length=100)
+    event_reason: str = Field(min_length=1, max_length=255)
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class LegalEntityVersionCreate(OrgVersionBase):
+    name: str | None = Field(default=None, max_length=200)
+    npwp: str | None = Field(default=None, max_length=32)
+
+
+class LegalEntityVersionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    legal_entity_id: uuid.UUID
+    name: str
+    npwp: str | None
+    valid_from: date
+    valid_to: date
+    seq_no: int
+    event: str
+    event_reason: str
+
+
+class OrgUnitCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    parent_id: uuid.UUID | None = None
+    legal_entity_id: uuid.UUID
+    valid_from: date
+    event: str = Field(min_length=1, max_length=100)
+    event_reason: str = Field(min_length=1, max_length=255)
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class OrgUnitVersionCreate(OrgVersionBase):
+    name: str | None = Field(default=None, max_length=200)
+    parent_id: uuid.UUID | None = None
+    legal_entity_id: uuid.UUID | None = None
+    is_active: bool | None = None
+
+
+class OrgUnitVersionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    org_unit_id: uuid.UUID
+    name: str
+    parent_id: uuid.UUID | None
+    legal_entity_id: uuid.UUID
+    is_active: bool
+    valid_from: date
+    valid_to: date
+    seq_no: int
+    event: str
+    event_reason: str
+
+
+class LocationCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    timezone: str = Field(default="Asia/Jakarta", max_length=50)
+    valid_from: date
+    event: str = Field(min_length=1, max_length=100)
+    event_reason: str = Field(min_length=1, max_length=255)
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class LocationVersionCreate(OrgVersionBase):
+    name: str | None = Field(default=None, max_length=200)
+    timezone: str | None = Field(default=None, max_length=50)
+
+
+class LocationVersionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    location_id: uuid.UUID
+    name: str
+    timezone: str
+    valid_from: date
+    valid_to: date
+    seq_no: int
+    event: str
+    event_reason: str
+
+
+class CostCenterCreate(BaseModel):
+    code: str = Field(min_length=1, max_length=50)
+    name: str = Field(min_length=1, max_length=200)
+    org_unit_id: uuid.UUID | None = None
+    valid_from: date
+    event: str = Field(min_length=1, max_length=100)
+    event_reason: str = Field(min_length=1, max_length=255)
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class CostCenterVersionCreate(OrgVersionBase):
+    code: str | None = Field(default=None, max_length=50)
+    name: str | None = Field(default=None, max_length=200)
+    org_unit_id: uuid.UUID | None = None
+    is_active: bool | None = None
+
+
+class CostCenterVersionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    cost_center_id: uuid.UUID
+    code: str
+    name: str
+    org_unit_id: uuid.UUID | None
+    is_active: bool
+    valid_from: date
+    valid_to: date
+    seq_no: int
+    event: str
+    event_reason: str
+
+
+class OrgChartLegalEntity(BaseModel):
+    id: uuid.UUID
+    name: str | None
+
+
+class OrgChartNode(BaseModel):
+    id: uuid.UUID
+    name: str
+    legal_entity: OrgChartLegalEntity
+    children: list["OrgChartNode"] = Field(default_factory=list)
+
+
+OrgChartNode.model_rebuild()
+
+
+# ------------------------------------------------------------------ Custom field (Sprint 2)
+class CustomFieldDefinitionCreate(BaseModel):
+    object_name: str = Field(min_length=1, max_length=100)
+    field_key: str = Field(min_length=1, max_length=50)
+    label_id: str = Field(min_length=1, max_length=200)
+    label_en: str | None = Field(default=None, max_length=200)
+    field_type: str = Field(min_length=1, max_length=20)
+    required: bool = False
+    options: list | dict = Field(default_factory=list)
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class CustomFieldDefinitionUpdate(BaseModel):
+    label_id: str | None = Field(default=None, max_length=200)
+    label_en: str | None = Field(default=None, max_length=200)
+    required: bool | None = None
+    options: list | dict | None = None
+    is_active: bool | None = None
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class CustomFieldDefinitionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    object_name: str
+    field_key: str
+    label_id: str
+    label_en: str | None
+    field_type: str
+    required: bool
+    options: list | dict
+    is_active: bool
+
+
+class CustomFieldValueSet(BaseModel):
+    definition_id: uuid.UUID
+    record_id: uuid.UUID
+    value: str | int | float | None = None
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class CustomFieldValueOut(BaseModel):
+    field_key: str
+    label_id: str
+    label_en: str | None
+    field_type: str
+    value: str | None
+    definition_active: bool

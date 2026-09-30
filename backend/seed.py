@@ -30,13 +30,19 @@ from app.core.security import hash_password  # noqa: E402
 from app.models import (  # noqa: E402
     Base,
     CompInfo,
+    CostCenter,
+    CostCenterInfo,
+    CustomFieldDefinition,
     Employment,
     FieldPermission,
     Job,
     JobInfo,
     LegalEntity,
+    LegalEntityInfo,
     Location,
+    LocationInfo,
     OrgUnit,
+    OrgUnitInfo,
     PermissionGroup,
     PermissionRole,
     Person,
@@ -50,6 +56,8 @@ from app.services.audit import write_audit  # noqa: E402
 
 ADMIN_EMAIL = "admin@hashiru.id"
 ADMIN_PASSWORD = "Password123!"
+# Struktur organisasi seed berlaku sejak tanggal ini (mendahului semua employment).
+ORG_VALID_FROM = date(2022, 1, 1)
 
 
 def _audit(db, tenant_id, actor_id, action, object_type, object_id, new_values, reason):
@@ -95,37 +103,85 @@ def main() -> None:
         _audit(db, tenant.id, admin.id, "create", "tenant", tenant.id,
                {"name": tenant.name, "slug": tenant.slug}, "Seed: tenant demo")
 
-        # ---- Struktur organisasi ----
-        le1 = LegalEntity(tenant_id=tenant.id, name="PT Hashiru Teknologi",
-                          npwp="01.234.567.8-901.234")
-        le2 = LegalEntity(tenant_id=tenant.id, name="PT Hashiru Distribusi",
-                          npwp="02.345.678.9-012.345")
-        db.add_all([le1, le2])
-        db.flush()
+        # ---- Struktur organisasi (Sprint 2: identitas + info berversi) ----
+        def add_le(name, npwp):
+            le = LegalEntity(tenant_id=tenant.id)
+            db.add(le)
+            db.flush()
+            ver = ed.insert_record(
+                db=db, tenant_id=tenant.id, model=LegalEntityInfo,
+                identity_field="legal_entity_id", identity_value=le.id,
+                valid_from=ORG_VALID_FROM,
+                values={"name": name, "npwp": npwp},
+                event="Pendirian", event_reason="Seed: struktur awal perusahaan",
+                created_by=admin.id,
+            )
+            _audit(db, tenant.id, admin.id, "insert", "legal_entity_info", ver.id,
+                   {"name": name}, "Seed: legal entity demo")
+            return le
 
-        loc_jkt = Location(tenant_id=tenant.id, name="Kantor Pusat Jakarta",
-                           timezone="Asia/Jakarta")
-        loc_bks = Location(tenant_id=tenant.id, name="Gudang Bekasi",
-                           timezone="Asia/Jakarta")
-        db.add_all([loc_jkt, loc_bks])
-        db.flush()
+        def add_location(name, timezone="Asia/Jakarta"):
+            loc = Location(tenant_id=tenant.id)
+            db.add(loc)
+            db.flush()
+            ver = ed.insert_record(
+                db=db, tenant_id=tenant.id, model=LocationInfo,
+                identity_field="location_id", identity_value=loc.id,
+                valid_from=ORG_VALID_FROM,
+                values={"name": name, "timezone": timezone},
+                event="Pembukaan", event_reason="Seed: lokasi awal perusahaan",
+                created_by=admin.id,
+            )
+            _audit(db, tenant.id, admin.id, "insert", "location_info", ver.id,
+                   {"name": name}, "Seed: lokasi demo")
+            return loc
 
-        dit_tech = OrgUnit(tenant_id=tenant.id, legal_entity_id=le1.id,
-                           parent_id=None, name="Direktorat Teknologi")
-        dit_ops = OrgUnit(tenant_id=tenant.id, legal_entity_id=le2.id,
-                          parent_id=None, name="Direktorat Operasi")
-        db.add_all([dit_tech, dit_ops])
+        def add_unit(name, legal_entity, parent=None):
+            unit = OrgUnit(tenant_id=tenant.id)
+            db.add(unit)
+            db.flush()
+            ver = ed.insert_record(
+                db=db, tenant_id=tenant.id, model=OrgUnitInfo,
+                identity_field="org_unit_id", identity_value=unit.id,
+                valid_from=ORG_VALID_FROM,
+                values={"name": name,
+                        "parent_id": parent.id if parent else None,
+                        "legal_entity_id": legal_entity.id,
+                        "is_active": True},
+                event="Pembentukan", event_reason="Seed: struktur awal organisasi",
+                created_by=admin.id,
+            )
+            _audit(db, tenant.id, admin.id, "insert", "org_unit_info", ver.id,
+                   {"name": name}, "Seed: unit organisasi demo")
+            return unit
+
+        le1 = add_le("PT Hashiru Teknologi", "01.234.567.8-901.234")
+        le2 = add_le("PT Hashiru Distribusi", "02.345.678.9-012.345")
+
+        loc_jkt = add_location("Kantor Pusat Jakarta")
+        loc_bks = add_location("Gudang Bekasi")
+
+        dit_tech = add_unit("Direktorat Teknologi", le1)
+        dit_ops = add_unit("Direktorat Operasi", le2)
+        dept_eng = add_unit("Departemen Engineering", le1, parent=dit_tech)
+        dept_log = add_unit("Departemen Logistik", le2, parent=dit_ops)
+        tim_be = add_unit("Tim Backend", le1, parent=dept_eng)
+
+        # ---- Cost center demo ----
+        cc_eng = CostCenter(tenant_id=tenant.id)
+        db.add(cc_eng)
         db.flush()
-        dept_eng = OrgUnit(tenant_id=tenant.id, legal_entity_id=le1.id,
-                           parent_id=dit_tech.id, name="Departemen Engineering")
-        dept_log = OrgUnit(tenant_id=tenant.id, legal_entity_id=le2.id,
-                           parent_id=dit_ops.id, name="Departemen Logistik")
-        db.add_all([dept_eng, dept_log])
-        db.flush()
-        tim_be = OrgUnit(tenant_id=tenant.id, legal_entity_id=le1.id,
-                         parent_id=dept_eng.id, name="Tim Backend")
-        db.add(tim_be)
-        db.flush()
+        cc_ver = ed.insert_record(
+            db=db, tenant_id=tenant.id, model=CostCenterInfo,
+            identity_field="cost_center_id", identity_value=cc_eng.id,
+            valid_from=ORG_VALID_FROM,
+            values={"code": "CC-ENG-01", "name": "Pusat Biaya Engineering",
+                    "org_unit_id": dept_eng.id, "is_active": True},
+            event="Pembentukan", event_reason="Seed: cost center demo",
+            created_by=admin.id,
+        )
+        _audit(db, tenant.id, admin.id, "insert", "cost_center_info", cc_ver.id,
+               {"code": "CC-ENG-01"}, "Seed: cost center demo")
 
         job_staff = Job(tenant_id=tenant.id, code="STF", title="Staff")
         job_spv = Job(tenant_id=tenant.id, code="SPV", title="Supervisor")
@@ -261,8 +317,11 @@ def main() -> None:
         # "Semua Karyawan" hanya membawa role Karyawan. Role HR Admin
         # sengaja tidak di-assign ke grup mana pun di seed (admin memakai
         # jalur superadmin); assignment dilakukan via API bila dibutuhkan.
+        # target_population "self": karyawan hanya melihat datanya sendiri
+        # (Sprint 2, PRD 15.5).
         db.add(RoleAssignment(tenant_id=tenant.id, role_id=role_emp.id,
-                              group_id=group_all.id))
+                              group_id=group_all.id,
+                              target_population={"type": "self"}))
         db.flush()
 
         def grant(role, object_name, **flags):
@@ -275,10 +334,11 @@ def main() -> None:
               can_correct=True, can_delete=True)
         # Manajer: baca data + riwayat, tanpa ubah.
         for obj in ("person", "employment", "job_info", "comp_info", "org",
-                    "audit_log"):
+                    "audit_log", "cost_center", "custom_field"):
             grant(role_mgr, obj, can_view=True, can_view_history=True)
         # Karyawan: baca data kini (tanpa riwayat gaji).
-        for obj in ("person", "employment", "job_info", "comp_info"):
+        for obj in ("person", "employment", "job_info", "comp_info", "org",
+                    "custom_field"):
             grant(role_emp, obj, can_view=True)
         db.flush()
 
@@ -295,6 +355,8 @@ def main() -> None:
         db.flush()
         # Grup dinamis: Manajer = user yang job-nya MGR hari ini.
         # Dewi (Manager) otomatis anggota; Budi (Staff) bukan.
+        # target_population "team": manajer melihat direct report-nya
+        # (Sprint 2, PRD 15.5).
         mgr_group = PermissionGroup(
             tenant_id=tenant.id, name="Grup Manajer",
             population_rule={"field": "job_id", "op": "=",
@@ -302,8 +364,29 @@ def main() -> None:
         db.add(mgr_group)
         db.flush()
         db.add(RoleAssignment(tenant_id=tenant.id, role_id=role_mgr.id,
-                              group_id=mgr_group.id))
+                              group_id=mgr_group.id,
+                              target_population={"type": "team"}))
         db.flush()
+
+        # ---- Definisi custom field demo (Sprint 2, CHR-009) ----
+        ukuran_seragam = CustomFieldDefinition(
+            tenant_id=tenant.id, object_name="person",
+            field_key="ukuran_seragam", label_id="Ukuran Seragam",
+            label_en="Uniform Size", field_type="select",
+            options=[
+                {"value": "S", "label_id": "S", "label_en": "Small", "active": True},
+                {"value": "M", "label_id": "M", "label_en": "Medium", "active": True},
+                {"value": "L", "label_id": "L", "label_en": "Large", "active": True},
+                {"value": "XL", "label_id": "XL", "label_en": "Extra Large",
+                 "active": True},
+            ],
+            created_by_user_id=admin.id,
+        )
+        db.add(ukuran_seragam)
+        db.flush()
+        _audit(db, tenant.id, admin.id, "create", "custom_field_definition",
+               ukuran_seragam.id, {"field_key": "ukuran_seragam"},
+               "Seed: custom field demo")
 
         db.commit()
         print("Seed selesai:")
