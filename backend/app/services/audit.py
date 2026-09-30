@@ -17,10 +17,14 @@ from app.models import AuditLog
 
 
 def _jsonable(value):
+    from decimal import Decimal
+
     if isinstance(value, (datetime, date)):
         return value.isoformat()
     if isinstance(value, uuid.UUID):
         return str(value)
+    if isinstance(value, Decimal):
+        return float(value)
     if isinstance(value, dict):
         return {k: _jsonable(v) for k, v in value.items()}
     if isinstance(value, (list, tuple)):

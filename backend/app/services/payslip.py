@@ -38,6 +38,10 @@ _LABELS = {
     "potongan_bpjs_kes": "Potongan BPJS Kesehatan",
     "potongan_jht": "Potongan JHT",
     "potongan_jp": "Potongan JP",
+    "potongan_mangkir": "Potongan Mangkir",
+    # Sprint 8 (BEN-001/BEN-003)
+    "reimbursement": "Reimbursement Klaim (non-pajak)",
+    "cicilan_pinjaman": "Cicilan Pinjaman",
 }
 
 
@@ -131,9 +135,14 @@ def render_payslip_pdf(*, line, period: str, company_name: str) -> bytes:
          Paragraph(f"{_rp(line.pph21 or 0)}"
                    f"{' (ditanggung perusahaan)' if line.pph21_borne_by == 'employer' else ''}",
                    right)],
-        [Paragraph("<b>Take-Home Pay</b>", normal),
-         Paragraph(f"<b>{_rp(line.take_home_pay or 0)}</b>", right)],
     ]
+    if getattr(line, "reimbursement_amount", 0):
+        summary.append(
+            [Paragraph("Reimbursement Klaim (non-pajak)", normal),
+             Paragraph(_rp(line.reimbursement_amount or 0), right)])
+    summary.append(
+        [Paragraph("<b>Take-Home Pay</b>", normal),
+         Paragraph(f"<b>{_rp(line.take_home_pay or 0)}</b>", right)])
     t_sum = Table(summary, colWidths=[110 * mm, 56 * mm])
     t_sum.setStyle(_table_style())
     story.append(t_sum)

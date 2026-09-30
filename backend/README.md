@@ -413,6 +413,70 @@ curl -s -X POST localhost:8000/api/v1/performance/enrollments/<uuid>/complete \
 
 Detail keputusan & simplifikasi jujur: `docs/adr/0010-performance-training.md`.
 
+## Yang baru di Sprint 8 (PRD 24.2 S8: klaim & pinjaman karyawan)
+
+- **Klaim**: jenis klaim berplafon (`/claims/types`, di-seed: kesehatan,
+  kacamata, melahirkan, transport, pulsa); alur `draft → submitted →
+  approved_l1 (atasan) → approved (HR/Finance) → paid`. Plafon per
+  pengajuan & per tahun ditegakkan 422; struk wajib bila
+  `requires_receipt`; self-approval ditolak.
+- **Reimbursement non-pajak**: klaim `approved` via payroll otomatis masuk
+  run sebagai earning NON-PAJAK (`breakdown["reimbursement"]`, kolom
+  `PayrollLine.reimbursement_amount`); PPh 21 & basis pensiun memakai
+  `taxable_gross = bruto − reimbursement`. Terlihat di slip PDF.
+- **Pinjaman**: kebijakan tenant (`/loans/policy`: maks 3× gaji, tenor
+  maks 24 bln, bunga flat default 0%); 1 pinjaman aktif per karyawan;
+  alur `draft → submitted → active → completed`. Cicilan dibuat lazy per
+  periode (idempoten) dan dipotong sebagai deduction `cicilan_pinjaman`;
+  `lock_run` menandai angsuran paid + mengurangi sisa. **Payoff**:
+  pelunasan dipercepat menjadi potongan penuh di periode terbuka
+  berikutnya.
+- **RBP**: object baru `claim`, `claim_type`, `loan`, `loan_policy`;
+  HR Admin penuh; manajer L1 klaim timnya; karyawan ESS milik sendiri.
+- **Demo end-to-end**: `../.venv/bin/python
+  scripts/demo_claim_loan_trail.py` — Budi Santoso ajukan klaim kesehatan
+  Rp1,5jt → Dewi Lestari approve L1 → admin approve final → masuk payroll
+  run 2026-09 (reimbursement tercatat, non-pajak) + pinjaman Rp12jt/12bln
+  (cicilan Rp1jt dipotong) → run dikunci → `demo/demo_claim_loan_trail.json`.
+
+```bash
+# Pengajuan klaim (karyawan)
+curl -s -X POST localhost:8000/api/v1/claims \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"employment_id":"<uuid>","claim_type_id":"<uuid>","amount":1500000,
+       "claim_date":"2026-09-15","receipt_document_id":"<uuid>"}'
+curl -s -X POST localhost:8000/api/v1/claims/<uuid>/submit \
+  -H "Authorization: Bearer $TOKEN"
+
+# Approve L1 (atasan) -> approve final (HR)
+curl -s -X POST localhost:8000/api/v1/claims/<uuid>/approve-l1 \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"reason":"Struk valid"}'
+curl -s -X POST localhost:8000/api/v1/claims/<uuid>/approve \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"reason":"Disetujui HR"}'
+
+# Pinjaman -> submit -> approve (HR)
+curl -s -X POST localhost:8000/api/v1/loans \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"employment_id":"<uuid>","amount":12000000,"tenor_months":12}'
+curl -s -X POST localhost:8000/api/v1/loans/<uuid>/submit \
+  -H "Authorization: Bearer $TOKEN"
+curl -s -X POST localhost:8000/api/v1/loans/<uuid>/approve \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"reason":"Sesuai kebijakan 3x gaji"}'
+
+# Pelunasan dipercepat -> angsuran payoff di periode terbuka berikutnya
+curl -s -X POST localhost:8000/api/v1/loans/<uuid>/payoff \
+  -H "Authorization: Bearer $TOKEN"
+
+# Sisa plafon klaim tahunan per karyawan
+curl -s "localhost:8000/api/v1/claims/summary/yearly?employment_id=<uuid>&year=2026" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Detail keputusan & simplifikasi jujur: `docs/adr/0011-claim-loan.md`.
+
 ## Yang baru di Sprint 3 (PRD 4: CHR-003 s.d. CHR-012)
 
 - **Katalog lifecycle** (CHR-003/004): event & alasan tersimpan sebagai

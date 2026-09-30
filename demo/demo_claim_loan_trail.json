@@ -1,0 +1,111 @@
+{
+  "alur": [
+    {
+      "aktor": "Budi Santoso",
+      "aksi": "ajukan klaim kesehatan",
+      "nominal": "Rp1.500.000",
+      "status": "submitted"
+    },
+    {
+      "aktor": "Dewi Lestari (atasan)",
+      "aksi": "approve L1",
+      "status": "approved_l1"
+    },
+    {
+      "aktor": "Admin HR",
+      "aksi": "approve final",
+      "status": "approved"
+    },
+    {
+      "aktor": "Budi Santoso",
+      "aksi": "pinjaman disetujui",
+      "nominal": "Rp12.000.000",
+      "angsuran_per_bulan": "Rp1.000.000",
+      "status": "active"
+    },
+    {
+      "aktor": "Admin HR",
+      "aksi": "mark-paid",
+      "payment_ref": "PAYROLL-2026-09",
+      "status": "paid"
+    }
+  ],
+  "payroll_run": {
+    "periode": "2026-09",
+    "gross": 12600000,
+    "reimbursement": 1500000,
+    "cicilan_pinjaman": 1000000,
+    "pph21": 365050,
+    "take_home_pay": 10834950
+  },
+  "pinjaman_setelah_lock": {
+    "sisa": 11000000,
+    "status": "active"
+  },
+  "audit": [
+    {
+      "objek": "claim",
+      "aksi": "mark_paid",
+      "aktor_user_id": "01a0f27c-a9c5-7bac-aefe-5ad3904c48cc",
+      "waktu": "2026-09-30T13:24:16",
+      "alasan": "PAYROLL-2026-09",
+      "channel": "api"
+    },
+    {
+      "objek": "claim",
+      "aksi": "approve",
+      "aktor_user_id": "01a0f27c-a9c5-7bac-aefe-5ad3904c48cc",
+      "waktu": "2026-09-30T13:24:16",
+      "alasan": "Disetujui HR",
+      "channel": "api"
+    },
+    {
+      "objek": "claim",
+      "aksi": "approve_l1",
+      "aktor_user_id": "01a0f27c-b160-7d7b-b266-a54a2ab8acd2",
+      "waktu": "2026-09-30T13:24:16",
+      "alasan": "Struk valid",
+      "channel": "api"
+    },
+    {
+      "objek": "claim",
+      "aksi": "submit",
+      "aktor_user_id": "01a0f27c-b160-7122-badd-d378683a1ebf",
+      "waktu": "2026-09-30T13:24:16",
+      "alasan": "Submit pengajuan klaim",
+      "channel": "api"
+    },
+    {
+      "objek": "claim",
+      "aksi": "create",
+      "aktor_user_id": "01a0f27c-b160-7122-badd-d378683a1ebf",
+      "waktu": "2026-09-30T13:24:16",
+      "alasan": "Pengajuan klaim baru (draft)",
+      "channel": "api"
+    },
+    {
+      "objek": "loan",
+      "aksi": "approve",
+      "aktor_user_id": "01a0f27c-a9c5-7bac-aefe-5ad3904c48cc",
+      "waktu": "2026-09-30T13:24:16",
+      "alasan": "Sesuai kebijakan 3x gaji",
+      "channel": "api"
+    },
+    {
+      "objek": "loan",
+      "aksi": "submit",
+      "aktor_user_id": "01a0f27c-b160-7122-badd-d378683a1ebf",
+      "waktu": "2026-09-30T13:24:16",
+      "alasan": "Submit pengajuan pinjaman",
+      "channel": "api"
+    },
+    {
+      "objek": "loan",
+      "aksi": "create",
+      "aktor_user_id": "01a0f27c-b160-7122-badd-d378683a1ebf",
+      "waktu": "2026-09-30T13:24:16",
+      "alasan": "Pengajuan pinjaman baru (draft)",
+      "channel": "api"
+    }
+  ]
+}

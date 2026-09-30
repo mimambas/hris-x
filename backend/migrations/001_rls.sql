@@ -65,7 +65,9 @@ BEGIN
             'offers',
             'review_cycles', 'performance_goals', 'appraisals',
             'tenant_performance_policies', 'training_courses',
-            'training_enrollments'
+            'training_enrollments',
+            'claim_types', 'claims', 'tenant_loan_policies', 'loans',
+            'loan_installments'
           )
     LOOP
         -- Isolasi tenant: baris hanya terlihat bila tenant_id cocok.

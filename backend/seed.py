@@ -60,6 +60,8 @@ from app.services import payroll as payroll_service  # noqa: E402
 from app.services import attendance as attendance_service  # noqa: E402
 from app.services import leave as leave_service  # noqa: E402
 from app.services import overtime as overtime_service  # noqa: E402
+from app.services import claims as claims_service  # noqa: E402
+from app.services import loans as loans_service  # noqa: E402
 from app.services.audit import write_audit  # noqa: E402
 
 ADMIN_EMAIL = "admin@hashiru.id"
@@ -114,6 +116,11 @@ def main() -> None:
         # Sprint 3 (CHR-002): katalog event lifecycle + alasan per tenant.
         lc_service.seed_lifecycle_catalog(db, tenant.id, admin.id)
         db.add(TenantContractPolicy(tenant_id=tenant.id))  # default: 60 bln, 1x
+        db.flush()
+        # Sprint 8 (BEN-001/BEN-003): jenis klaim bawaan + kebijakan pinjaman
+        # default (maks 3x gaji, tenor maks 24, bunga 0%).
+        claims_service.seed_claim_types(db, tenant.id)
+        loans_service.get_loan_policy(db, tenant.id)
         db.flush()
 
         # ---- Struktur organisasi (Sprint 2: identitas + info berversi) ----
@@ -475,6 +482,20 @@ def main() -> None:
         grant(role_emp, "training_course", can_view=True)
         grant(role_emp, "training_enrollment", can_view=True, can_insert=True,
               can_correct=True)
+        # Sprint 8: klaim — manajer L1 timnya (view+correct); karyawan ESS
+        # (ajukan milik sendiri); HR Admin penuh.
+        grant(role_mgr, "claim", can_view=True, can_correct=True)
+        grant(role_mgr, "claim_type", can_view=True)
+        grant(role_emp, "claim", can_view=True, can_insert=True,
+              can_correct=True)
+        grant(role_emp, "claim_type", can_view=True)
+        # Sprint 8: pinjaman — manajer hanya lihat (tanpa putuskan);
+        # karyawan ajukan & lihat milik sendiri; persetujuan HR Admin.
+        grant(role_mgr, "loan", can_view=True)
+        grant(role_mgr, "loan_policy", can_view=True)
+        grant(role_emp, "loan", can_view=True, can_insert=True,
+              can_correct=True)
+        grant(role_emp, "loan_policy", can_view=True)
         db.flush()
 
         # ---- User tambahan terikat ke Person ----

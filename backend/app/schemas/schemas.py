@@ -840,6 +840,9 @@ class PayrollLineOut(BaseModel):
     thr_amount: int
     retro_amount: int
     retro_detail: dict
+    # Sprint 8 (BEN-001): reimbursement klaim non-pajak.
+    reimbursement_amount: int = 0
+    reimbursement_claim_ids: list = []
     take_home_pay: int
     employer_cost: dict
     bank_name: str | None
@@ -1477,3 +1480,136 @@ class PerformancePolicyUpdate(BaseModel):
     perf_med_max: float = Field(ge=0, le=5)
     pot_low_max: float = Field(ge=0, le=5)
     pot_med_max: float = Field(ge=0, le=5)
+
+
+# ---------------------------------------------------------------------------
+# Klaim & pinjaman karyawan (Sprint 8, PRD Bagian 11.5 BEN-001/BEN-003).
+# ---------------------------------------------------------------------------
+class ClaimTypeOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    code: str
+    name: str
+    limit_per_year: int | None
+    limit_per_claim: int | None
+    requires_receipt: bool
+    active: bool
+
+
+class ClaimTypeCreate(BaseModel):
+    code: str = Field(min_length=1, max_length=50)
+    name: str = Field(min_length=1, max_length=200)
+    limit_per_year: int | None = Field(default=None, ge=0)
+    limit_per_claim: int | None = Field(default=None, ge=0)
+    requires_receipt: bool = True
+
+
+class ClaimCreate(BaseModel):
+    employment_id: uuid.UUID
+    claim_type_id: uuid.UUID
+    amount: int = Field(gt=0)
+    claim_date: date
+    description: str | None = Field(default=None, max_length=2000)
+    receipt_document_id: uuid.UUID | None = None
+    paid_via: str = "payroll"
+
+
+class ClaimUpdate(BaseModel):
+    claim_type_id: uuid.UUID | None = None
+    amount: int | None = Field(default=None, gt=0)
+    claim_date: date | None = None
+    description: str | None = Field(default=None, max_length=2000)
+    receipt_document_id: uuid.UUID | None = None
+    paid_via: str | None = None
+
+
+class ClaimOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    employment_id: uuid.UUID
+    claim_type_id: uuid.UUID
+    amount: int
+    claim_date: date
+    description: str | None
+    receipt_document_id: uuid.UUID | None
+    status: str
+    paid_via: str
+    payroll_run_id: uuid.UUID | None
+    submitted_at: datetime | None
+    approved_at: datetime | None
+    paid_at: datetime | None
+    payment_ref: str | None
+    rejection_reason: str | None
+    created_at: datetime
+
+
+class ClaimDecision(BaseModel):
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class ClaimPaid(BaseModel):
+    payment_ref: str | None = Field(default=None, max_length=100)
+
+
+class ClaimSummaryOut(BaseModel):
+    claim_type_id: str
+    claim_type_code: str
+    claim_type_name: str
+    limit_per_year: int | None
+    used: int
+    remaining: int | None
+
+
+class LoanPolicyOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    max_amount_multiplier: float
+    max_tenor_months: int
+    default_interest_rate: float
+    allow_multiple_active: bool
+
+
+class LoanPolicyUpdate(BaseModel):
+    max_amount_multiplier: float | None = Field(default=None, gt=0)
+    max_tenor_months: int | None = Field(default=None, gt=0)
+    default_interest_rate: float | None = Field(default=None, ge=0)
+    allow_multiple_active: bool | None = None
+
+
+class LoanCreate(BaseModel):
+    employment_id: uuid.UUID
+    amount: int = Field(gt=0)
+    tenor_months: int = Field(gt=0)
+    purpose: str | None = Field(default=None, max_length=500)
+    interest_rate: float | None = Field(default=None, ge=0)
+
+
+class LoanOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    employment_id: uuid.UUID
+    principal_amount: int
+    interest_rate: float
+    total_payable: int
+    tenor_months: int
+    monthly_installment: int
+    remaining_total: int
+    purpose: str | None
+    status: str
+    submitted_at: datetime | None
+    approved_at: datetime | None
+    paid_off_at: datetime | None
+    rejection_reason: str | None
+    created_at: datetime
+
+
+class LoanInstallmentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    loan_id: uuid.UUID
+    period: str
+    amount: int
+    kind: str
+    status: str
+    payroll_run_id: uuid.UUID | None
+    paid_at: datetime | None

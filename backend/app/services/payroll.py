@@ -39,6 +39,8 @@ from app.services import lifecycle as lc_service
 from app.services import pph21 as pph21_service
 from app.services import attendance as attendance_service
 from app.services import overtime as overtime_service
+from app.services import claims as claims_service
+from app.services import loans as loans_service
 from app.services.formula import (
     BUILTIN_VARS,
     FormulaError,
@@ -470,6 +472,12 @@ def evaluate_employment(
     is_december: bool = False,
     ytd_gross: int = 0, ytd_tax: int = 0, ytd_pension_base: int = 0,
     retro_amount: int = 0, retro_detail: dict | None = None,
+    # Sprint 8 (BEN-001/BEN-003): reimbursement klaim (non-pajak) &
+    # cicilan pinjaman yang dipotong periode ini.
+    reimbursement: int = 0,
+    reimbursement_claim_ids: list | None = None,
+    loan_installment: int = 0,
+    loan_installment_ids: list | None = None,
 ) -> dict:
     """Hitung satu baris payroll; kembalikan dict siap simpan ke PayrollLine."""
     if method not in pph21_service.PPH21_METHODS:
@@ -552,6 +560,19 @@ def evaluate_employment(
 
     base_gross = sum(v for c, v in breakdown.items() if kinds[c] == "earning")
     deductions = sum(v for c, v in breakdown.items() if kinds[c] == "deduction")
+    # Sprint 8 (BEN-001/BEN-003): reimbursement klaim & cicilan pinjaman.
+    # Reimbursement = earning NON-PAJAK -> dikeluarkan dari bruto kena pajak.
+    reimbursement = int(reimbursement or 0)
+    loan_installment = int(loan_installment or 0)
+    if reimbursement:
+        breakdown["reimbursement"] = reimbursement
+        kinds["reimbursement"] = "earning"
+        base_gross += reimbursement
+    if loan_installment:
+        breakdown["cicilan_pinjaman"] = loan_installment
+        kinds["cicilan_pinjaman"] = "deduction"
+        deductions += loan_installment
+    taxable_gross = base_gross - reimbursement
 
     # 2. THR (masuk bruto tahunan -> kena pajak via penyesuaian).
     thr = 0
@@ -570,7 +591,8 @@ def evaluate_employment(
         if employment.status in ("active", "probation"):
             thr = thr_amount(employment.start_date, thr_holiday_date, basis)
 
-    # 3. PPh 21.
+    # 3. PPh 21. Reimbursement (Sprint 8) non-pajak: semua perhitungan
+    # PPh 21 memakai bruto kena pajak (taxable_gross), bukan base_gross.
     irregular = thr + retro_amount
     if is_december:
         if method == "gross_up":
@@ -578,7 +600,7 @@ def evaluate_employment(
             # Desember itu sendiri (tunjangan ikut kena pajak).
             dec_tax = 0
             for _ in range(10):
-                dec_gross = base_gross + dec_tax
+                dec_gross = taxable_gross + dec_tax
                 pension_actual = rupiah(
                     0.03 * (ytd_pension_base + dec_gross))
                 new_tax = pph21_service.december_adjustment(
@@ -591,14 +613,14 @@ def evaluate_employment(
             tax = dec_tax
         else:
             pension_actual = rupiah(
-                0.03 * (ytd_pension_base + base_gross))
+                0.03 * (ytd_pension_base + taxable_gross))
             tax = pph21_service.december_adjustment(
-                ytd_gross + base_gross + irregular, ptkp, ytd_tax,
+                ytd_gross + taxable_gross + irregular, ptkp, ytd_tax,
                 pension_actual,
             )
         borne_by = "employee" if method == "gross" else "employer"
     else:
-        tax = pph21_service.monthly_tax(base_gross, ptkp, method, irregular)
+        tax = pph21_service.monthly_tax(taxable_gross, ptkp, method, irregular)
         borne_by = "employee" if method == "gross" else "employer"
 
     if method == "gross_up":
@@ -637,6 +659,8 @@ def evaluate_employment(
             "upah_lembur": overtime_pay,
             "gaji": gaji,
             "pph21_method": method,
+            "reimbursement": reimbursement,
+            "loan_installment": loan_installment,
         },
         "gross": gross,
         "total_deductions": deductions,
@@ -645,6 +669,10 @@ def evaluate_employment(
         "thr_amount": thr,
         "retro_amount": retro_amount,
         "retro_detail": retro_detail or {},
+        "reimbursement_amount": reimbursement,
+        "reimbursement_claim_ids": reimbursement_claim_ids or [],
+        "loan_installment": loan_installment,
+        "loan_installment_ids": loan_installment_ids or [],
         "take_home_pay": take_home,
         "employer_cost": employer_cost,
         "bank_name": person.bank_name if person else None,
@@ -882,6 +910,14 @@ def create_run(
     totals = {"total_gross": 0, "total_thr": 0, "total_retro": 0,
               "total_deductions": 0, "total_pph21": 0,
               "total_take_home": 0, "total_employer_bpjs": 0}
+    # Sprint 8: reimbursement klaim (BEN-001) & angsuran pinjaman (BEN-003)
+    # otomatis masuk run periode ini.
+    claim_map = claims_service.payable_for_period(
+        db, tenant_id, period_start, period_end, [e.id for e in employments]
+    )
+    loan_map = loans_service.installments_for_period(
+        db, tenant_id, period, [e.id for e in employments]
+    )
 
     for emp in employments:
         ot = overtime_hours.get(str(emp.id), 0)
@@ -896,6 +932,9 @@ def create_run(
         ytd = (0, 0, 0)
         if is_december:
             ytd = _ytd_sums(db, tenant_id, emp.id, period_end.year, period)
+        emp_key = str(emp.id)
+        claim_info = claim_map.get(emp_key, {"amount": 0, "claim_ids": []})
+        loan_info = loan_map.get(emp_key, {"amount": 0, "installment_ids": []})
         calc = evaluate_employment(
             db=db, tenant_id=tenant_id, employment=emp, period=period,
             method=method, include_thr=include_thr,
@@ -904,12 +943,21 @@ def create_run(
             is_december=is_december,
             ytd_gross=ytd[0], ytd_tax=ytd[1], ytd_pension_base=ytd[2],
             retro_amount=retro, retro_detail=retro_detail,
+            reimbursement=claim_info["amount"],
+            reimbursement_claim_ids=claim_info["claim_ids"],
+            loan_installment=loan_info["amount"],
+            loan_installment_ids=loan_info["installment_ids"],
         )
         # Simpan gross (termasuk tunjangan pajak bila gross_up) sebagai basis
         # pensiun YTD untuk penyesuaian Desember berikutnya, dan peta kind
-        # agar slip bisa memisah penghasilan/potongan.
-        calc["inputs_snapshot"]["gross_regular"] = calc["gross"]
+        # agar slip bisa memisah penghasilan/potongan. Reimbursement (Sprint
+        # 8) dikeluarkan dari basis pensiun karena bersifat non-pajak.
+        calc["inputs_snapshot"]["gross_regular"] = (
+            calc["gross"] - claim_info["amount"]
+        )  # basis pensiun YTD: tanpa reimbursement (non-pajak)
         calc["inputs_snapshot"]["kinds"] = calc["kinds"]
+        calc["inputs_snapshot"]["reimbursement"] = claim_info["amount"]
+        calc["inputs_snapshot"]["loan_installment"] = loan_info["amount"]
         line = PayrollLine(
             tenant_id=tenant_id, payroll_run_id=run.id,
             employment_id=emp.id,
@@ -920,6 +968,8 @@ def create_run(
             pph21=calc["pph21"], pph21_borne_by=calc["pph21_borne_by"],
             thr_amount=calc["thr_amount"], retro_amount=calc["retro_amount"],
             retro_detail=calc["retro_detail"],
+            reimbursement_amount=claim_info["amount"],
+            reimbursement_claim_ids=claim_info["claim_ids"],
             take_home_pay=calc["take_home_pay"],
             employer_cost=calc["employer_cost"],
             bank_name=calc["bank_name"],
@@ -927,6 +977,8 @@ def create_run(
             validation_errors=calc["validation_errors"],
         )
         db.add(line)
+        claims_service.attach_to_run(db, claim_info["claim_ids"], run.id)
+        loans_service.attach_to_run(db, loan_info["installment_ids"], run.id)
         totals["total_gross"] += calc["gross"]
         totals["total_thr"] += calc["thr_amount"]
         totals["total_retro"] += calc["retro_amount"]
@@ -973,5 +1025,8 @@ def lock_run(*, db: Session, tenant_id, run_id, locked_by) -> PayrollRun:
     run.status = "locked"
     run.locked_at = datetime.now(timezone.utc)
     run.locked_by_user_id = locked_by
+    # Sprint 8: angsuran pinjaman pada run ini menjadi paid; sisa pinjaman
+    # dikurangi, pinjaman yang lunas otomatis completed.
+    loans_service.settle_run_installments(db, tenant_id, run.id)
     db.flush()
     return run

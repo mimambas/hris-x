@@ -929,6 +929,14 @@ class PayrollLine(Base):
     thr_amount: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     retro_amount: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     retro_detail: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    # Reimbursement klaim (Sprint 8, BEN-001): earning NON-PAJAK, tidak masuk
+    # `gross` kena pajak; direkonsiliasi terpisah di slip.
+    reimbursement_amount: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0
+    )
+    reimbursement_claim_ids: Mapped[list] = mapped_column(
+        JSON, nullable=False, default=list
+    )
     take_home_pay: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     # Info beban perusahaan (tidak memotong take-home; untuk laporan iuran).
     employer_cost: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
@@ -1681,4 +1689,217 @@ class TrainingEnrollment(Base):
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+# ---------------------------------------------------------------------------
+# Klaim & pinjaman karyawan (Sprint 8, PRD Bagian 11.5: BEN-001/BEN-003).
+#
+# Penyederhanaan vs PRD (jujur, dirinci di ADR-0011):
+# - Tanpa OCR struk (BEN-001): struk = dokumen upload biasa (modul Sprint 3).
+# - Reimbursement masuk payroll run sebagai earning NON-PAJAK; opsi
+#   "dibayar terpisah" (transfer) tercatat sebagai status paid dengan
+#   paid_via="transfer" dan tidak masuk run.
+# - Pinjaman: bunga flat tahunan sederhana (default 0%), tanpa denda;
+#   tanpa EWA (BEN-004) dan cash advance settlement (BEN-002).
+# ---------------------------------------------------------------------------
+class ClaimType(Base):
+    """Jenis klaim: plafon per tahun & per pengajuan, terkonfigurasi/tenant."""
+
+    __tablename__ = "claim_types"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    code: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    # Plafon rupiah; None = tanpa batas.
+    limit_per_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    limit_per_claim: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    requires_receipt: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True
+    )
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "code", name="uq_claimtypes_tenant_code"),
+    )
+
+
+class Claim(Base):
+    """Pengajuan klaim dengan approval 2 level (atasan -> HR/Finance)."""
+
+    __tablename__ = "claims"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    employment_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("employments.id"), nullable=False, index=True
+    )
+    claim_type_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("claim_types.id"), nullable=False, index=True
+    )
+    amount: Mapped[int] = mapped_column(Integer, nullable=False)
+    claim_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Struk: referensi ke documents.id (tanpa FK keras, pola Sprint 7).
+    receipt_document_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, nullable=True
+    )
+    # draft/submitted/approved_l1/approved/paid/rejected/cancelled
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="draft"
+    )
+    # Cara bayar: payroll (masuk run) | transfer (dibayar terpisah).
+    paid_via: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="payroll"
+    )
+    # Run payroll yang membawa reimbursement ini (hanya bila payroll).
+    payroll_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("payroll_runs.id"), nullable=True, index=True
+    )
+    submitted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    l1_approved_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True
+    )
+    l1_approved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    approved_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True
+    )
+    approved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    paid_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True
+    )
+    paid_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    payment_ref: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    rejection_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    cancelled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class TenantLoanPolicy(Base):
+    """Kebijakan pinjaman per tenant."""
+
+    __tablename__ = "tenant_loan_policies"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("tenants.id"), nullable=False, unique=True, index=True
+    )
+    # Maksimal pinjaman = multiplier x gaji bulanan (gaji_pokok+tunjangan_tetap).
+    max_amount_multiplier: Mapped[float] = mapped_column(
+        Numeric(5, 2), nullable=False, default=3.0
+    )
+    max_tenor_months: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=24
+    )
+    # Bunga flat tahunan default (0.0 = tanpa bunga).
+    default_interest_rate: Mapped[float] = mapped_column(
+        Numeric(5, 4), nullable=False, default=0.0
+    )
+    # Bila False: 1 pinjaman aktif per karyawan.
+    allow_multiple_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+
+
+class Loan(Base):
+    """Pinjaman/kasbon karyawan; cicilan otomatis dipotong dari payroll."""
+
+    __tablename__ = "loans"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    employment_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("employments.id"), nullable=False, index=True
+    )
+    principal_amount: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Bunga flat tahunan yang dipakai saat approve (mis. 0.06 = 6%).
+    interest_rate: Mapped[float] = mapped_column(
+        Numeric(7, 4), nullable=False, default=0.0
+    )
+    # Total yang harus dibayar = pokok + bunga flat.
+    total_payable: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    tenor_months: Mapped[int] = mapped_column(Integer, nullable=False)
+    monthly_installment: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0
+    )
+    # Sisa total (pokok+bunga) yang belum dibayar.
+    remaining_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    purpose: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # draft/submitted/approved/active/completed/rejected/cancelled
+    # ("approved" = transien saat approve; langsung menjadi "active".)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="draft"
+    )
+    submitted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    approved_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True
+    )
+    approved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    paid_off_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    rejection_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    cancelled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class LoanInstallment(Base):
+    """Satu angsuran pinjaman untuk satu periode payroll."""
+
+    __tablename__ = "loan_installments"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    loan_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("loans.id"), nullable=False, index=True
+    )
+    # Periode payroll "YYYY-MM" tempat angsuran dipotong.
+    period: Mapped[str] = mapped_column(String(7), nullable=False, index=True)
+    amount: Mapped[int] = mapped_column(Integer, nullable=False)
+    # regular | payoff (pelunasan dipercepat: sisa total sekaligus).
+    kind: Mapped[str] = mapped_column(String(20), nullable=False, default="regular")
+    # pending -> paid (saat payroll run dikunci).
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="pending"
+    )
+    payroll_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("payroll_runs.id"), nullable=True, index=True
+    )
+    paid_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    __table_args__ = (
+        UniqueConstraint("loan_id", "period",
+                         name="uq_loaninstallments_loan_period"),
     )

@@ -8,6 +8,7 @@ from app.api.v1 import (
     attendance,
     audit_logs,
     auth,
+    claims,
     comp_info,
     contracts,
     custom_fields,
@@ -16,6 +17,7 @@ from app.api.v1 import (
     job_info,
     leave,
     lifecycle,
+    loans,
     org,
     overtime,
     payroll,
@@ -46,3 +48,5 @@ api_router.include_router(attendance.router)
 api_router.include_router(leave.router)
 api_router.include_router(overtime.router)
 api_router.include_router(recruitment.router)
+api_router.include_router(claims.router)
+api_router.include_router(loans.router)
