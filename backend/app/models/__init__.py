@@ -943,3 +943,347 @@ class PayrollLine(Base):
         ),
         Index("ix_payrolllines_run", "payroll_run_id"),
     )
+
+
+# ---------------------------------------------------------------------------
+# Absensi, cuti, lembur (Sprint 5, PRD Bagian 10: TIM/LEV).
+#
+# Penyederhanaan vs PRD (jujur, dirinci di ADR-0008):
+# - Tanpa geofence/GPS, face matching, deteksi fake GPS, mode offline,
+#   integrasi mesin absensi (TIM-010 s/d TIM-015 = F1 di PRD, di sini
+#   arsitektur disiapkan via kolom `source`, bukan implementasi penuh).
+# - Koreksi absensi = versi baru (is_current), data asli tetap ada (TIM-021).
+# - Saldo cuti disimpan sebagai counter (bukan ledger append-only penuh);
+#   setiap mutasi tercatat di audit trail.
+# ---------------------------------------------------------------------------
+class Shift(Base):
+    """Definisi shift kerja per tenant."""
+
+    __tablename__ = "shifts"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    code: Mapped[str] = mapped_column(String(40), nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    start_time: Mapped[datetime] = mapped_column(
+        DateTime(timezone=False), nullable=False
+    )  # dipakai komponen jam:menit saja
+    end_time: Mapped[datetime] = mapped_column(DateTime(timezone=False), nullable=False)
+    is_overnight: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    grace_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=15)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "code", name="uq_shifts_tenant_code"),
+    )
+
+
+class ShiftAssignment(Base):
+    """Penugasan shift ke employment, bertanggal efektif (tanpa katalog event:
+    ini penjadwalan operasional, bukan peristiwa lifecycle)."""
+
+    __tablename__ = "shift_assignments"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    employment_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("employments.id"), nullable=False, index=True
+    )
+    shift_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("shifts.id"), nullable=False, index=True
+    )
+    valid_from: Mapped[date] = mapped_column(Date, nullable=False)
+    valid_to: Mapped[date] = mapped_column(Date, nullable=False, default=MAX_DATE)
+
+    __table_args__ = (
+        Index("ix_shiftassign_emp_from", "employment_id", "valid_from"),
+    )
+
+
+class Holiday(Base):
+    """Kalender libur tenant: libur nasional & cuti bersama (LEV-003)."""
+
+    __tablename__ = "holidays"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    is_cuti_bersama: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Cuti bersama memotong saldo cuti tahunan (opsional, default True).
+    deducts_leave: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Penanda idempotensi apply_mass_leave (sudah dipotong atau belum).
+    mass_leave_applied: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False)
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "date", name="uq_holidays_tenant_date"),
+    )
+
+
+ATTENDANCE_SOURCES = ("mobile", "web", "manual", "machine")
+ATTENDANCE_STATUSES = ("present", "late", "absent", "leave", "holiday")
+
+
+class AttendanceRecord(Base):
+    """Satu hari absensi satu employment. Koreksi = versi baru (TIM-021);
+    versi lama (is_current=False) tetap tersimpan sebagai jejak."""
+
+    __tablename__ = "attendance_records"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    employment_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("employments.id"), nullable=False, index=True
+    )
+    date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    is_current: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    check_in: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    check_out: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    source: Mapped[str] = mapped_column(String(20), nullable=False, default="web")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="present")
+    late_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    early_leave_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    work_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    correction_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "employment_id", "date", "version",
+            name="uq_attendance_tenant_emp_date_ver",
+        ),
+        Index("ix_attendance_emp_date", "employment_id", "date"),
+    )
+
+
+class LeaveType(Base):
+    """Jenis cuti/izin per tenant (LEV-001)."""
+
+    __tablename__ = "leave_types"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    code: Mapped[str] = mapped_column(String(40), nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    quota_days: Mapped[int] = mapped_column(Integer, nullable=False, default=12)
+    # none | monthly — akrual; monthly dipakai untuk pro-rata join mid-year.
+    accrual: Mapped[str] = mapped_column(String(20), nullable=False, default="none")
+    min_service_months: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    requires_doc: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # False untuk "izin" (tidak memotong kuota).
+    deducts_balance: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "code", name="uq_leavetypes_tenant_code"),
+    )
+
+
+class LeaveBalance(Base):
+    """Saldo cuti per employment per jenis per tahun kalender."""
+
+    __tablename__ = "leave_balances"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    employment_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("employments.id"), nullable=False, index=True
+    )
+    leave_type_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("leave_types.id"), nullable=False, index=True
+    )
+    year: Mapped[int] = mapped_column(Integer, nullable=False)
+    entitled: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    used: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    remaining: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "employment_id", "leave_type_id", "year",
+            name="uq_leavebal_tenant_emp_type_year",
+        ),
+        Index("ix_leavebal_emp_year", "employment_id", "year"),
+    )
+
+
+LEAVE_REQUEST_STATUSES = (
+    "draft", "submitted", "approved_l1", "approved", "rejected", "cancelled",
+)
+
+
+class LeaveRequest(Base):
+    """Pengajuan cuti/izin dengan approval 2 level (LEV, MSS)."""
+
+    __tablename__ = "leave_requests"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    employment_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("employments.id"), nullable=False, index=True
+    )
+    leave_type_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("leave_types.id"), nullable=False, index=True
+    )
+    start_date: Mapped[date] = mapped_column(Date, nullable=False)
+    end_date: Mapped[date] = mapped_column(Date, nullable=False)
+    # Hari kerja yang dipotong (Senin-Jumat, di luar libur tenant).
+    days: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="draft")
+    submitted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    l1_approved_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True
+    )
+    l1_approved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    l2_approved_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True
+    )
+    l2_approved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    rejection_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    cancelled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    doc_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        Index("ix_leavereq_emp_status", "employment_id", "status"),
+    )
+
+
+class TenantLeavePolicy(Base):
+    """Kebijakan cuti per tenant."""
+
+    __tablename__ = "tenant_leave_policies"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("tenants.id"), nullable=False, unique=True, index=True
+    )
+    max_consecutive_days: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=12
+    )
+    # Daftar {"start": "YYYY-MM-DD", "end": "YYYY-MM-DD", "name": ...}.
+    blackout_dates: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class TenantAttendancePolicy(Base):
+    """Kebijakan absensi per tenant (aturan telat dsb, TIM-020 sederhana)."""
+
+    __tablename__ = "tenant_attendance_policies"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("tenants.id"), nullable=False, unique=True, index=True
+    )
+    grace_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=15)
+    # Bila True, hari mangkir memotong gaji via komponen "potongan_mangkir".
+    deduct_absent: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class OvertimeRate(Base):
+    """Tabel pengali lembur bertanggal efektif (PP 35/2021; siap diganti
+    bila UU ketenagakerjaan baru berlaku — PRD 10.4)."""
+
+    __tablename__ = "overtime_rates"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    valid_from: Mapped[date] = mapped_column(Date, nullable=False)
+    valid_to: Mapped[date] = mapped_column(Date, nullable=False, default=MAX_DATE)
+    first_hour_mult: Mapped[float] = mapped_column(
+        Numeric(5, 2), nullable=False, default=1.5
+    )
+    next_hour_mult: Mapped[float] = mapped_column(
+        Numeric(5, 2), nullable=False, default=2.0
+    )
+    # Pembagi upah sebulan -> upah per jam (default 173).
+    divisor: Mapped[int] = mapped_column(Integer, nullable=False, default=173)
+
+    __table_args__ = (
+        Index("ix_overtimerate_tenant_from", "tenant_id", "valid_from"),
+    )
+
+
+OVERTIME_REQUEST_STATUSES = (
+    "draft", "submitted", "approved_l1", "approved", "rejected", "cancelled",
+)
+
+
+class OvertimeRequest(Base):
+    """Pengajuan lembur pra-persetujuan + approval 2 level (TIM-030)."""
+
+    __tablename__ = "overtime_requests"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    employment_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("employments.id"), nullable=False, index=True
+    )
+    date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    start_time: Mapped[datetime] = mapped_column(
+        DateTime(timezone=False), nullable=False
+    )
+    end_time: Mapped[datetime] = mapped_column(DateTime(timezone=False), nullable=False)
+    hours: Mapped[float] = mapped_column(Numeric(6, 2), nullable=False, default=0)
+    reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="draft")
+    # Upah lembur (integer rupiah) dihitung saat approval final.
+    pay_amount: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    l1_approved_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True
+    )
+    l1_approved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    l2_approved_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True
+    )
+    l2_approved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    rejection_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        Index("ix_overtimereq_emp_date", "employment_id", "date"),
+    )

@@ -49,6 +49,7 @@ from app.models import (  # noqa: E402
     Position,
     RoleAssignment,
     SalaryComponent,
+    Shift,
     Tenant,
     TenantContractPolicy,
     User,
@@ -56,6 +57,9 @@ from app.models import (  # noqa: E402
 from app.services import effective_dating as ed  # noqa: E402
 from app.services import lifecycle as lc_service  # noqa: E402
 from app.services import payroll as payroll_service  # noqa: E402
+from app.services import attendance as attendance_service  # noqa: E402
+from app.services import leave as leave_service  # noqa: E402
+from app.services import overtime as overtime_service  # noqa: E402
 from app.services.audit import write_audit  # noqa: E402
 
 ADMIN_EMAIL = "admin@hashiru.id"
@@ -354,6 +358,33 @@ def main() -> None:
                 )
         db.flush()
 
+        # ---- Katalog absensi/cuti/lembur Sprint 5 (PRD Bagian 10) ----
+        attendance_service.seed_shifts(db, tenant.id)
+        leave_service.seed_leave_types(db, tenant.id)
+        overtime_service.seed_overtime_rate(db, tenant.id)
+        attendance_service.get_attendance_policy(db, tenant.id)
+        leave_service.get_leave_policy(db, tenant.id)
+        _audit(db, tenant.id, admin.id, "create", "shift", None,
+               {"seeded": len(attendance_service.SHIFT_SEED)},
+               "Seed: shift standar demo")
+        _audit(db, tenant.id, admin.id, "create", "leave_type", None,
+               {"seeded": len(leave_service.LEAVE_TYPES_SEED)},
+               "Seed: jenis cuti demo")
+        shift_pagi = (
+            db.execute(
+                select(Shift).where(Shift.tenant_id == tenant.id,
+                                    Shift.code == "pagi")
+            )
+            .scalars()
+            .first()
+        )
+        for _nama, _emp in employments.items():
+            attendance_service.assign_shift(
+                db=db, tenant_id=tenant.id, employment_id=_emp.id,
+                shift_id=shift_pagi.id, valid_from=_emp.start_date,
+            )
+        db.flush()
+
         # ---- RBP: role, group, assignment, field permission ----
         group_all = PermissionGroup(
             tenant_id=tenant.id, name="Semua Karyawan",
@@ -391,10 +422,18 @@ def main() -> None:
         for obj in ("person", "employment", "job_info", "comp_info", "org",
                     "audit_log", "cost_center", "custom_field"):
             grant(role_mgr, obj, can_view=True, can_view_history=True)
+        # Manajer: lihat + putuskan pengajuan cuti/lembur tim (Sprint 5).
+        for obj in ("leave_request", "overtime_request", "attendance",
+                    "leave_type", "holiday", "shift"):
+            grant(role_mgr, obj, can_view=True, can_correct=True)
         # Karyawan: baca data kini (tanpa riwayat gaji).
         for obj in ("person", "employment", "job_info", "comp_info", "org",
                     "custom_field"):
             grant(role_emp, obj, can_view=True)
+        # Karyawan: self-service absensi/cuti/lembur (Sprint 5, ESS).
+        for obj in ("attendance", "leave_request", "overtime_request"):
+            grant(role_emp, obj, can_view=True, can_insert=True)
+        grant(role_emp, "leave_type", can_view=True)
         db.flush()
 
         # ---- User tambahan terikat ke Person ----

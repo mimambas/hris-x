@@ -175,6 +175,65 @@ curl -s "localhost:8000/api/v1/payroll/runs/<uuid>/transfer-file?bank=bca" \
 
 Detail keputusan & simplifikasi jujur: `docs/adr/0007-payroll-engine.md`.
 
+## Yang baru di Sprint 5 (PRD 24.2 S5: absensi, cuti multi-level, lembur)
+
+- **Shift**: katalog per tenant (`Pagi 08:00–17:00`, `Siang 13:00–22:00`,
+  `Malam 22:00–07:00` overnight) + penugasan bertanggal efektif per
+  employment (cek tumpang-tindih). `/shifts`, `/shift-assignments`.
+- **Absensi**: `POST /attendance/check-in|check-out` (deteksi telat vs
+  shift+grace, pulang-cepat), koreksi **wajib alasan** → versi baru
+  (TIM-021, versi lama tersimpan, jam koreksi dihitung ulang),
+  `GET /attendance/summary?period=YYYY-MM` (hadir/telat/mangkir/cuti/libur).
+  Kolom `source` disiapkan untuk `mobile|web|manual|machine`.
+- **Cuti multi-level**: `draft → submitted → approved_l1 → approved`
+  (+`rejected`/`cancelled`). L1 = atasan langsung (org chart hari ini),
+  L2 = HR; larangan menyetujui pengajuan sendiri. Saldo
+  (`entitled/used/remaining`) dipotong saat approval final, kembali bila
+  dibatalkan sebelum mulai. Akrual pro-rata (`kuota × sisa_bulan/12`),
+  hari cuti = Senin–Jumat minus libur. Cuti bersama massal:
+  `POST /holidays/{id}/apply-mass-leave` (idempoten, potong 1 hari semua
+  karyawan aktif).
+- **Lembur**: pengajuan pra-persetujuan maks 4 jam/hari; upah =
+  1,5× jam pertama + 2× sisanya, upah/jam = `gaji_pokok/173` (PP 35/2021),
+  dikunci saat approval final. Tabel `OvertimeRate` bertanggal efektif.
+- **Integrasi payroll (ATT-010)**: variabel `hari_hadir`, `hari_mangkir`,
+  `jam_lembur`, `upah_lembur`, `potongan_mangkir_aktif` mengalir ke formula
+  gaji — seed: `uang_makan = hari_hadir × 50.000`,
+  `lembur = jam_lembur × upah_per_jam + upah_lembur`,
+  `potongan_mangkir = hari_mangkir × (gaji/25) × potongan_mangkir_aktif`.
+  Lembur approved otomatis masuk payroll run; variabel integrasi terlihat
+  di `inputs_snapshot` tiap baris slip (rekonsiliasi). Tanpa record absensi
+  → fallback `hari_hadir = hari_kerja` (run lama tetap reproduksibel).
+- **ESS/RBP**: karyawan self-service (`view+insert` absensi/cuti/lembur),
+  manajer `view+correct` (persetujuan tim).
+- **Demo end-to-end**: `../.venv/bin/python scripts/demo_leave_flow.py` —
+  Budi mengajukan cuti via `?source=mobile` → Dewi (atasan) approve L1 →
+  admin approve L2 → saldo 12→9; jejak audit ke `demo/demo_leave_trail.json`.
+
+```bash
+# Check-in (telat terdeteksi otomatis vs shift+grace)
+curl -s -X POST localhost:8000/api/v1/attendance/check-in \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"employment_id":"<uuid>","at":"2026-11-02T08:20:00","channel":"mobile"}'
+
+# Ajukan cuti via "HP", lalu alur approval 2 level
+curl -s -X POST 'localhost:8000/api/v1/leave/requests?source=mobile' \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"employment_id":"<uuid>","leave_type_id":"<uuid>",
+       "start_date":"2026-11-09","end_date":"2026-11-11","reason":"Liburan"}'
+curl -s -X POST localhost:8000/api/v1/leave/requests/<uuid>/submit \
+  -H "Authorization: Bearer $TOKEN"
+# (login sebagai atasan) .../approve-l1   (login sebagai HR) .../approve-l2
+
+# Lembur 3 jam → upah = 1,5x1 + 2x2 jam × gaji/173
+curl -s -X POST localhost:8000/api/v1/overtime/requests \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"employment_id":"<uuid>","date":"2026-11-02",
+       "start_time":"18:00","end_time":"21:00","reason":"Deployment"}'
+```
+
+Detail keputusan & simplifikasi jujur: `docs/adr/0008-attendance-leave-overtime.md`.
+
 ## Yang baru di Sprint 3 (PRD 4: CHR-003 s.d. CHR-012)
 
 - **Katalog lifecycle** (CHR-003/004): event & alasan tersimpan sebagai
@@ -243,8 +302,10 @@ Detail keputusan & simplifikasi jujur: `docs/adr/0007-payroll-engine.md`.
 - Workflow engine & approval (PLT-030 s.d. PLT-037)
 - SoD, masking data sensitif, proxy login, laporan izin (PLT-042 s.d. PLT-045)
 - Rantai hash audit (PLT-051), audit akses baca field sensitif (PLT-052)
-- Notifikasi, SSO/OIDC, mobile/ESS
-- Modul: absensi, cuti, rekrutmen, dst. (Sprint 5+; payroll selesai di Sprint 4)
+- Notifikasi, SSO/OIDC, aplikasi mobile/ESS native
+  (API siap `source=mobile`; tanpa GPS/geofence/face-match/offline)
+- Modul: rekrutmen, dst. (Sprint 6+; absensi/cuti/lembur selesai di Sprint 5,
+  payroll di Sprint 4)
 
 ## Penyederhanaan vs PRD (jujur)
 

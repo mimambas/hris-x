@@ -37,6 +37,8 @@ from app.models import (
 from app.services import effective_dating as ed
 from app.services import lifecycle as lc_service
 from app.services import pph21 as pph21_service
+from app.services import attendance as attendance_service
+from app.services import overtime as overtime_service
 from app.services.formula import (
     BUILTIN_VARS,
     FormulaError,
@@ -71,9 +73,10 @@ SALARY_COMPONENTS_SEED: list[tuple] = [
      True, True, 20),
     ("tunjangan_transport", "Tunjangan Transport", "earning", "fixed", "0",
      True, False, 30),
-    ("uang_makan", "Uang Makan", "earning", "formula", "hari_kerja * 50000",
+    ("uang_makan", "Uang Makan", "earning", "formula", "hari_hadir * 50000",
      True, False, 40),
-    ("lembur", "Upah Lembur", "earning", "formula", "jam_lembur * upah_per_jam",
+    ("lembur", "Upah Lembur", "earning", "formula",
+     "jam_lembur * upah_per_jam + upah_lembur",
      True, False, 50),
     ("potongan_bpjs_kes", "Potongan BPJS Kesehatan (1%)", "deduction",
      "formula", "0.01 * min(gaji, 12000000)", False, False, 110),
@@ -81,6 +84,9 @@ SALARY_COMPONENTS_SEED: list[tuple] = [
      "formula", "0.02 * gaji", False, False, 120),
     ("potongan_jp", "Potongan JP (1%)", "deduction",
      "formula", "0.01 * min(gaji, 10547300)", False, False, 130),
+    ("potongan_mangkir", "Potongan Mangkir", "deduction",
+     "formula", "hari_mangkir * (gaji / 25) * potongan_mangkir_aktif",
+     False, False, 140),
 ]
 
 
@@ -460,6 +466,7 @@ def evaluate_employment(
     period: str, method: str, include_thr: bool = False,
     thr_holiday_date: date | None = None,
     overtime_hours: int = 0,
+    overtime_pay: int = 0,  # upah lembur approved (dengan pengali), Sprint 5
     is_december: bool = False,
     ytd_gross: int = 0, ytd_tax: int = 0, ytd_pension_base: int = 0,
     retro_amount: int = 0, retro_detail: dict | None = None,
@@ -482,6 +489,19 @@ def evaluate_employment(
 
     assigns = _active_assignments(db, tenant_id, employment.id, period_end)
     hari_kerja = working_days(year, month)
+
+    # Sprint 5 (integrasi ATT-010): hari hadir & mangkir dari absensi.
+    # Tanpa record absensi sama sekali -> fallback ke asumsi lama
+    # (hari_hadir = hari_kerja) agar run lama tetap reproduksibel.
+    if attendance_service.has_any_record(
+        db, tenant_id, employment.id, period_start, period_end
+    ):
+        hari_hadir, hari_mangkir = attendance_service.present_and_absent_days(
+            db, tenant_id, employment.id, period_start, period_end
+        )
+    else:
+        hari_hadir, hari_mangkir = hari_kerja, 0
+    att_policy = attendance_service.get_attendance_policy(db, tenant_id)
 
     # 1. Fixed dulu (untuk variabel `gaji`), lalu formula topological order.
     values: dict[str, int] = {}
@@ -511,7 +531,11 @@ def evaluate_employment(
     gaji = values.get("gaji_pokok", 0) + values.get("tunjangan_tetap", 0)
     variables: dict = {
         "hari_kerja": hari_kerja,
+        "hari_hadir": hari_hadir,
+        "hari_mangkir": hari_mangkir,
+        "potongan_mangkir_aktif": 1 if att_policy.deduct_absent else 0,
         "jam_lembur": overtime_hours,
+        "upah_lembur": overtime_pay,
         "gaji": gaji,
         "upah_per_jam": (gaji / 173) if gaji else 0,
         **values,
@@ -607,7 +631,10 @@ def evaluate_employment(
             "period": period,
             "ptkp": ptkp,
             "hari_kerja": hari_kerja,
+            "hari_hadir": hari_hadir,
+            "hari_mangkir": hari_mangkir,
             "jam_lembur": overtime_hours,
+            "upah_lembur": overtime_pay,
             "gaji": gaji,
             "pph21_method": method,
         },
@@ -836,6 +863,10 @@ def create_run(
     overtime_hours = overtime_hours or {}
     is_december = period_end.month == 12
     ref_run = _latest_reference_run(db, tenant_id, period)
+    # Sprint 5: lembur approved otomatis masuk run (integrasi ATT-010).
+    approved_ot = overtime_service.approved_for_period(
+        db, tenant_id, period_start, period_end
+    )
 
     run = PayrollRun(
         tenant_id=tenant_id, period=period, status="draft",
@@ -854,6 +885,7 @@ def create_run(
 
     for emp in employments:
         ot = overtime_hours.get(str(emp.id), 0)
+        ot_pay = approved_ot.get(str(emp.id), {}).get("pay", 0)
         retro, retro_detail = (0, {})
         if ref_run is not None:
             retro, retro_detail = detect_retro(
@@ -868,6 +900,7 @@ def create_run(
             db=db, tenant_id=tenant_id, employment=emp, period=period,
             method=method, include_thr=include_thr,
             thr_holiday_date=thr_holiday_date, overtime_hours=ot,
+            overtime_pay=ot_pay,
             is_december=is_december,
             ytd_gross=ytd[0], ytd_tax=ytd[1], ytd_pension_base=ytd[2],
             retro_amount=retro, retro_detail=retro_detail,

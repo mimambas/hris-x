@@ -184,7 +184,12 @@ def validate_formula_names(formula: str, allowed: set[str]) -> None:
 
 
 # Variabel bawaan yang boleh dipakai formula (selain kode komponen).
-BUILTIN_VARS = frozenset({"hari_kerja", "gaji", "jam_lembur", "upah_per_jam"})
+# Sprint 5 menambah: hari_hadir, hari_mangkir, upah_lembur,
+# potongan_mangkir_aktif (integrasi absensi/lembur -> payroll, ATT-010).
+BUILTIN_VARS = frozenset({
+    "hari_kerja", "gaji", "jam_lembur", "upah_per_jam",
+    "hari_hadir", "hari_mangkir", "upah_lembur", "potongan_mangkir_aktif",
+})
 
 
 class _ZeroDefault(dict):

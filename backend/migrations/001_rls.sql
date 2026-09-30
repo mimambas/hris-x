@@ -55,7 +55,11 @@ BEGIN
             'documents',
             'salary_components', 'salary_component_info',
             'comp_assignments', 'comp_assignment_info',
-            'payroll_policies', 'payroll_runs', 'payroll_lines'
+            'payroll_policies', 'payroll_runs', 'payroll_lines',
+            'shifts', 'shift_assignments', 'holidays', 'attendance_records',
+            'leave_types', 'leave_balances', 'leave_requests',
+            'tenant_leave_policies', 'tenant_attendance_policies',
+            'overtime_rates', 'overtime_requests'
           )
     LOOP
         -- Isolasi tenant: baris hanya terlihat bila tenant_id cocok.

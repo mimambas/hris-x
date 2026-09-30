@@ -1,0 +1,70 @@
+{
+  "alur": [
+    {
+      "aktor": "Budi Santoso (HP)",
+      "aksi": "buat pengajuan",
+      "status": "draft",
+      "hari": 3
+    },
+    {
+      "aktor": "Budi Santoso (HP)",
+      "aksi": "submit",
+      "status": "submitted"
+    },
+    {
+      "aktor": "Dewi Lestari (atasan langsung)",
+      "aksi": "approve L1",
+      "status": "approved_l1"
+    },
+    {
+      "aktor": "Administrator (HR)",
+      "aksi": "approve L2",
+      "status": "approved"
+    }
+  ],
+  "saldo_sebelum": {
+    "cuti_tahunan": 12,
+    "cuti_sakit": 12,
+    "cuti_melahirkan": 90,
+    "cuti_besar": 0,
+    "izin": 0
+  },
+  "saldo_sesudah": {
+    "cuti_tahunan": 9,
+    "cuti_sakit": 12,
+    "cuti_melahirkan": 90,
+    "cuti_besar": 0,
+    "izin": 0
+  },
+  "selisih_cuti_tahunan": 3,
+  "audit": [
+    {
+      "aksi": "approve_l2",
+      "aktor_user_id": "01a0f1f7-fcb8-7106-98cb-dd7c37dcc14c",
+      "waktu": "2026-09-30T10:59:20",
+      "alasan": "Disetujui HR",
+      "channel": "api"
+    },
+    {
+      "aksi": "approve_l1",
+      "aktor_user_id": "01a0f1f8-04fe-772f-9a9f-a037d1d3a33a",
+      "waktu": "2026-09-30T10:59:20",
+      "alasan": "Disetujui",
+      "channel": "api"
+    },
+    {
+      "aksi": "submit",
+      "aktor_user_id": "01a0f1f8-04fe-7e28-b9db-7756b933750c",
+      "waktu": "2026-09-30T10:59:20",
+      "alasan": "Pengajuan disubmit",
+      "channel": "api"
+    },
+    {
+      "aksi": "create",
+      "aktor_user_id": "01a0f1f8-04fe-7e28-b9db-7756b933750c",
+      "waktu": "2026-09-30T10:59:20",
+      "alasan": "Liburan keluarga",
+      "channel": "mobile"
+    }
+  ]
+}

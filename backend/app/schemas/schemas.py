@@ -829,6 +829,7 @@ class PayrollLineOut(BaseModel):
     nik: str
     ptkp: str
     breakdown: dict
+    inputs_snapshot: dict = {}
     gross: int
     total_deductions: int
     pph21: int
@@ -854,3 +855,199 @@ class PayrollRunOut(BaseModel):
     headcount: int
     created_at: datetime
     locked_at: datetime | None
+
+
+# ------------------------------------------------------------------ Sprint 5: absensi, cuti, lembur
+class ShiftCreate(BaseModel):
+    code: str = Field(min_length=1, max_length=40)
+    name: str = Field(min_length=1, max_length=120)
+    start_time: str = Field(min_length=5, max_length=5)  # "HH:MM"
+    end_time: str = Field(min_length=5, max_length=5)
+    is_overnight: bool = False
+    grace_minutes: int = Field(default=15, ge=0, le=120)
+
+
+class ShiftOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    code: str
+    name: str
+    is_overnight: bool
+    grace_minutes: int
+    is_active: bool
+
+
+class ShiftAssignRequest(BaseModel):
+    employment_id: uuid.UUID
+    shift_id: uuid.UUID
+    valid_from: date
+    valid_to: date | None = None
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class ShiftAssignOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    employment_id: uuid.UUID
+    shift_id: uuid.UUID
+    valid_from: date
+    valid_to: date
+
+
+class CheckInOutRequest(BaseModel):
+    employment_id: uuid.UUID
+    at: datetime | None = None  # default: sekarang
+    source: str = Field(default="web", pattern=r"^(mobile|web|manual|machine)$")
+    reason: str = Field(default="", max_length=500)
+
+
+class AttendanceCorrectRequest(BaseModel):
+    check_in: datetime | None = None
+    check_out: datetime | None = None
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class AttendanceRecordOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    employment_id: uuid.UUID
+    date: date
+    version: int
+    check_in: datetime | None
+    check_out: datetime | None
+    source: str
+    status: str
+    late_minutes: int
+    early_leave_minutes: int
+    work_minutes: int
+    correction_reason: str | None
+
+
+class HolidayCreate(BaseModel):
+    date: date
+    name: str = Field(min_length=1, max_length=200)
+    is_cuti_bersama: bool = False
+    deducts_leave: bool = True
+
+
+class HolidayOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    date: date
+    name: str
+    is_cuti_bersama: bool
+    deducts_leave: bool
+    mass_leave_applied: bool = False
+
+
+class LeaveTypeCreate(BaseModel):
+    code: str = Field(min_length=1, max_length=40)
+    name: str = Field(min_length=1, max_length=120)
+    quota_days: int = Field(default=12, ge=0, le=365)
+    accrual: str = Field(default="none", pattern=r"^(none|monthly)$")
+    min_service_months: int = Field(default=0, ge=0, le=120)
+    requires_doc: bool = False
+    deducts_balance: bool = True
+
+
+class LeaveTypeOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    code: str
+    name: str
+    quota_days: int
+    accrual: str
+    min_service_months: int
+    requires_doc: bool
+    deducts_balance: bool
+    is_active: bool
+
+
+class LeaveBalanceOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    employment_id: uuid.UUID
+    leave_type_id: uuid.UUID
+    leave_type_code: str = ""
+    year: int
+    entitled: int
+    used: int
+    remaining: int
+
+
+class LeaveRequestCreate(BaseModel):
+    employment_id: uuid.UUID
+    leave_type_id: uuid.UUID
+    start_date: date
+    end_date: date
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class LeaveRequestOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    employment_id: uuid.UUID
+    leave_type_id: uuid.UUID
+    start_date: date
+    end_date: date
+    days: int
+    reason: str | None
+    status: str
+    l1_approved_at: datetime | None
+    l2_approved_at: datetime | None
+    rejection_reason: str | None
+
+
+class LeaveDecisionRequest(BaseModel):
+    reason: str | None = Field(default=None, max_length=500)  # wajib saat reject
+
+
+class LeavePolicyUpdate(BaseModel):
+    max_consecutive_days: int | None = Field(default=None, ge=1, le=365)
+    blackout_dates: list[dict] | None = None
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class LeavePolicyOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    max_consecutive_days: int
+    blackout_dates: list
+
+
+class AttendancePolicyUpdate(BaseModel):
+    grace_minutes: int | None = Field(default=None, ge=0, le=120)
+    deduct_absent: bool | None = None
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class AttendancePolicyOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    grace_minutes: int
+    deduct_absent: bool
+
+
+class OvertimeRateOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    first_hour_mult: float
+    next_hour_mult: float
+    divisor: int
+
+
+class OvertimeRequestCreate(BaseModel):
+    employment_id: uuid.UUID
+    date: date
+    start_time: str = Field(min_length=5, max_length=5)  # "HH:MM"
+    end_time: str = Field(min_length=5, max_length=5)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class OvertimeRequestOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    employment_id: uuid.UUID
+    date: date
+    hours: float
+    reason: str | None
+    status: str
+    pay_amount: int
+    rejection_reason: str | None

@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from app.api.v1 import (
+    attendance,
     audit_logs,
     auth,
     comp_info,
@@ -13,8 +14,10 @@ from app.api.v1 import (
     documents,
     imports,
     job_info,
+    leave,
     lifecycle,
     org,
+    overtime,
     payroll,
     persons,
     rbac,
@@ -36,3 +39,6 @@ api_router.include_router(contracts.router)
 api_router.include_router(imports.router)
 api_router.include_router(documents.router)
 api_router.include_router(payroll.router)
+api_router.include_router(attendance.router)
+api_router.include_router(leave.router)
+api_router.include_router(overtime.router)
