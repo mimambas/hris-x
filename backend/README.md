@@ -128,6 +128,53 @@ curl -s -X POST localhost:8000/api/v1/documents \
   -F "doc_type=ktp" -F "person_id=<uuid>" -F "file=@ktp.pdf"
 ```
 
+## Yang baru di Sprint 4 (Payroll: struktur gaji, formula, PPh 21, THR)
+
+- **Komponen gaji** berversi effective-dated (`earning`/`deduction`), kode unik
+  per tenant, perubahan tercatat sebagai event lifecycle `salary_structure`.
+- **Formula engine aman**: evaluator AST whitelist tanpa `eval()`; referensi
+  antar-komponen + variabel bawaan (`hari_kerja`, `gaji`, `jam_lembur`,
+  `upah_per_jam`); siklus & nama tak dikenal ditolak 422 saat simpan.
+- **PPh 21**: progresif-tahunan/12 + penyesuaian Desember (BUKAN tarif TER —
+  lihat ADR-0007); metode `gross` / `gross_up` / `net` per policy tenant.
+- **THR** proporsional masa kerja (Permenaker 6/2016), basis `gaji_pokok`
+  atau `total_fixed`.
+- **Payroll run** `YYYY-MM`: hitung → lock (validasi blocking: rekening bank,
+  take-home negatif) → retro otomatis di run berikut bila ada koreksi mundur.
+  Periode harus dikunci berurutan.
+- **Slip gaji PDF** per karyawan + **file transfer bank CSV**; semua angka
+  dapat direkonsiliasi (`take_home = gross + THR + retro − potongan − PPh21`).
+
+```bash
+# Buat komponen formula (potongan JHT 2% dari gaji)
+curl -s -X POST localhost:8000/api/v1/payroll/components \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"name":"Potongan JHT","kind":"deduction","calc_type":"formula",
+       "amount_or_formula":"0.02 * gaji","valid_from":"2024-01-01",
+       "event":"salary_structure","event_reason":"Komponen baru","reason":"demo"}'
+
+# Tugaskan komponen ke karyawan
+curl -s -X POST localhost:8000/api/v1/payroll/assignments \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"employment_id":"<uuid>","component_id":"<uuid>","valid_from":"2024-01-01",
+       "event":"salary_structure","event_reason":"Komponen baru","reason":"demo"}'
+
+# Buat & kunci run Agustus 2026 (dengan THR bila ada hari raya)
+curl -s -X POST localhost:8000/api/v1/payroll/runs \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"period":"2026-08","include_thr":false}'
+curl -s -X POST localhost:8000/api/v1/payroll/runs/<uuid>/lock \
+  -H "Authorization: Bearer $TOKEN"
+
+# Slip PDF + file transfer
+curl -s -o slip.pdf "localhost:8000/api/v1/payroll/runs/<uuid>/payslip/<employment-uuid>.pdf" \
+  -H "Authorization: Bearer $TOKEN"
+curl -s "localhost:8000/api/v1/payroll/runs/<uuid>/transfer-file?bank=bca" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Detail keputusan & simplifikasi jujur: `docs/adr/0007-payroll-engine.md`.
+
 ## Yang baru di Sprint 3 (PRD 4: CHR-003 s.d. CHR-012)
 
 - **Katalog lifecycle** (CHR-003/004): event & alasan tersimpan sebagai
@@ -197,14 +244,15 @@ curl -s -X POST localhost:8000/api/v1/documents \
 - SoD, masking data sensitif, proxy login, laporan izin (PLT-042 s.d. PLT-045)
 - Rantai hash audit (PLT-051), audit akses baca field sensitif (PLT-052)
 - Notifikasi, SSO/OIDC, mobile/ESS
-- Modul: absensi, cuti, payroll, rekrutmen, dst. (Sprint 4+)
+- Modul: absensi, cuti, rekrutmen, dst. (Sprint 5+; payroll selesai di Sprint 4)
 
 ## Penyederhanaan vs PRD (jujur)
 
 1. `correct_record` belum bisa mengubah tanggal berlaku — harus insert baru.
 2. Grup dinamis S1 hanya mendukung field location/org_unit/job/legal_entity
    dengan operator `=`/`in` (tanpa komposisi AND/OR).
-3. `detect_retro_impact` belum memeriksa status kunci periode payroll
-   (modul payroll baru ada di S8).
+3. `detect_retro_impact` di effective-dating belum memeriksa status kunci
+   periode payroll (deteksi retro bawaan modul payroll Sprint 4 sudah
+   memakai run terkunci).
 4. RBP dievaluasi per-request dari DB (tanpa cache); untuk skala besar
    perlu materialisasi/cache grup.

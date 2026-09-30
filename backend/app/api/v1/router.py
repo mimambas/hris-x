@@ -15,6 +15,7 @@ from app.api.v1 import (
     job_info,
     lifecycle,
     org,
+    payroll,
     persons,
     rbac,
     tenants,
@@ -34,3 +35,4 @@ api_router.include_router(lifecycle.router)
 api_router.include_router(contracts.router)
 api_router.include_router(imports.router)
 api_router.include_router(documents.router)
+api_router.include_router(payroll.router)

@@ -743,3 +743,203 @@ class Document(Base):
     __table_args__ = (
         Index("ix_documents_tenant_person_type", "tenant_id", "person_id", "doc_type"),
     )
+
+
+# ---------------------------------------------------------------------------
+# Payroll (Sprint 4).
+#
+# Pola konsisten ADR-0001/0004/0006:
+# - SalaryComponent = identitas (code unik per tenant); versi bertanggal
+#   efektif di SalaryComponentInfo (perubahan rumus/nominal = versi baru).
+# - CompAssignment = identitas (employment x komponen); versi bertanggal
+#   efektif di CompAssignmentInfo (override amount / aktif-nonaktif).
+# - Uang = integer rupiah (PRD 18.4 aturan 3).
+# ---------------------------------------------------------------------------
+class SalaryComponent(Base):
+    """Identitas komponen gaji (gaji_pokok, tunjangan_tetap, lembur, ...)."""
+
+    __tablename__ = "salary_components"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    code: Mapped[str] = mapped_column(String(60), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "code", name="uq_salcomp_tenant_code"),
+    )
+
+
+class SalaryComponentInfo(Base, EffectiveDatedMixin):
+    """Versi komponen gaji bertanggal efektif (PAY-001)."""
+
+    __tablename__ = "salary_component_info"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    component_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("salary_components.id"), nullable=False, index=True
+    )
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)  # earning | deduction
+    calc_type: Mapped[str] = mapped_column(String(20), nullable=False)  # fixed | formula
+    # fixed -> string integer rupiah ("8000000"); formula -> ekspresi aman
+    # (dievaluasi app/services/formula.py, tanpa eval/exec).
+    amount_or_formula: Mapped[str] = mapped_column(Text, nullable=False)
+    is_taxable: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    is_bpjs_base: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "component_id", "valid_from", "seq_no",
+            name="uq_salcompinfo_c_from_seq",
+        ),
+        Index("ix_salcompinfo_c_from", "component_id", "valid_from"),
+    )
+
+
+class CompAssignment(Base):
+    """Identitas: komponen X di-assign ke employment Y."""
+
+    __tablename__ = "comp_assignments"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    employment_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("employments.id"), nullable=False, index=True
+    )
+    component_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("salary_components.id"), nullable=False, index=True
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "employment_id", "component_id",
+            name="uq_compassign_tenant_emp_comp",
+        ),
+    )
+
+
+class CompAssignmentInfo(Base, EffectiveDatedMixin):
+    """Versi assignment bertanggal efektif: override & aktif/nonaktif."""
+
+    __tablename__ = "comp_assignment_info"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    assignment_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("comp_assignments.id"), nullable=False, index=True
+    )
+    # Bila diisi: menggantikan nilai default komponen fixed untuk karyawan ini.
+    override_amount: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "assignment_id", "valid_from", "seq_no",
+            name="uq_compassigninfo_a_from_seq",
+        ),
+        Index("ix_compassigninfo_a_from", "assignment_id", "valid_from"),
+    )
+
+
+class PayrollPolicy(Base):
+    """Kebijakan penggajian per tenant (metode PPh 21, basis THR, ...)."""
+
+    __tablename__ = "payroll_policies"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("tenants.id"), nullable=False, unique=True, index=True
+    )
+    pph21_method: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="gross"
+    )  # gross | gross_up | net
+    thr_basis: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="gaji_pokok"
+    )  # gaji_pokok | total_fixed
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class PayrollRun(Base):
+    """Satu periode penggajian ("YYYY-MM"). Terkunci -> tak bisa dihitung ulang."""
+
+    __tablename__ = "payroll_runs"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    period: Mapped[str] = mapped_column(String(7), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="draft")
+    pph21_method: Mapped[str] = mapped_column(String(20), nullable=False, default="gross")
+    include_thr: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    thr_holiday_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # Input run: {"overtime_hours": {"<employment_id>": 2}, ...}
+    inputs: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    totals: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    headcount: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    locked_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True
+    )
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "period", name="uq_payrollruns_tenant_period"),
+    )
+
+
+class PayrollLine(Base):
+    """Satu baris slip: snapshot input + breakdown komponen (rekonsiliasi)."""
+
+    __tablename__ = "payroll_lines"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    payroll_run_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("payroll_runs.id"), nullable=False, index=True
+    )
+    employment_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("employments.id"), nullable=False, index=True
+    )
+    person_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    nik: Mapped[str] = mapped_column(String(16), nullable=False)
+    ptkp: Mapped[str] = mapped_column(String(8), nullable=False, default="TK/0")
+    # Snapshot yang bisa direkonsiliasi: {code: amount_int} komponen reguler.
+    breakdown: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    # Input snapshot: {"ptkp": ..., "hari_kerja": ..., "gaji_pokok": ...}
+    inputs_snapshot: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    gross: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_deductions: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    pph21: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    pph21_borne_by: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="employee"
+    )  # employee | employer
+    thr_amount: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    retro_amount: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    retro_detail: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    take_home_pay: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Info beban perusahaan (tidak memotong take-home; untuk laporan iuran).
+    employer_cost: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    bank_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    bank_account_no: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # Error blocking validasi pra-kunci (PAY-009): [] = siap dikunci.
+    validation_errors: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "payroll_run_id", "employment_id",
+            name="uq_payrolllines_run_employment",
+        ),
+        Index("ix_payrolllines_run", "payroll_run_id"),
+    )

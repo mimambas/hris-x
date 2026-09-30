@@ -49,6 +49,11 @@ LIFECYCLE_EVENTS_SEED: list[tuple[str, str, str, list[str]]] = [
      ["Rekrutmen ulang karyawan lama", "Lainnya"]),
     ("data_update", "Pembaruan Data", "Koreksi/pembaruan tanpa perubahan status",
      ["Koreksi data", "Pembaruan data", "Perubahan status PTKP", "Lainnya"]),
+    # Sprint 4: perubahan struktur gaji (komponen/rumus/assignment).
+    ("salary_structure", "Perubahan Struktur Gaji",
+     "Perubahan komponen, rumus, atau assignment gaji",
+     ["Komponen baru", "Perubahan rumus", "Perubahan nominal",
+      "Nonaktifkan komponen", "Lainnya"]),
 ]
 
 ORG_EVENTS_SEED: list[tuple[str, str, str, list[str]]] = [
@@ -80,35 +85,53 @@ EVENT_STATUS_MAP = {
 def seed_lifecycle_catalog(
     db: Session, tenant_id, created_by_user_id=None
 ) -> None:
-    """Seed katalog event default untuk satu tenant. Idempoten."""
-    exists = (
-        db.execute(
-            select(LifecycleEvent.id).where(LifecycleEvent.tenant_id == tenant_id).limit(1)
-        ).first()
-    )
-    if exists:
-        return
+    """Seed katalog event default untuk satu tenant.
+
+    Idempoten per kode: event yang belum ada ditambahkan, yang sudah ada
+    dibiarkan (aman dipanggil ulang saat katalog bertambah, mis. Sprint 4).
+    """
     for applies_to, seed in (("lifecycle", LIFECYCLE_EVENTS_SEED),
                              ("org", ORG_EVENTS_SEED)):
         for code, name, description, reasons in seed:
-            ev = LifecycleEvent(
-                tenant_id=tenant_id,
-                code=code,
-                name=name,
-                description=description,
-                applies_to=applies_to,
-                is_active=True,
-                created_by_user_id=created_by_user_id,
+            ev = (
+                db.execute(
+                    select(LifecycleEvent).where(
+                        LifecycleEvent.tenant_id == tenant_id,
+                        LifecycleEvent.code == code,
+                    )
+                )
+                .scalars()
+                .first()
             )
-            db.add(ev)
-            db.flush()
-            for reason in reasons:
-                db.add(EventReason(
+            if ev is None:
+                ev = LifecycleEvent(
                     tenant_id=tenant_id,
-                    event_id=ev.id,
-                    reason=reason,
+                    code=code,
+                    name=name,
+                    description=description,
+                    applies_to=applies_to,
                     is_active=True,
-                ))
+                    created_by_user_id=created_by_user_id,
+                )
+                db.add(ev)
+                db.flush()
+            for reason in reasons:
+                exists = (
+                    db.execute(
+                        select(EventReason.id).where(
+                            EventReason.tenant_id == tenant_id,
+                            EventReason.event_id == ev.id,
+                            EventReason.reason == reason,
+                        ).limit(1)
+                    ).first()
+                )
+                if not exists:
+                    db.add(EventReason(
+                        tenant_id=tenant_id,
+                        event_id=ev.id,
+                        reason=reason,
+                        is_active=True,
+                    ))
     db.flush()
 
 

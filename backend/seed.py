@@ -48,12 +48,14 @@ from app.models import (  # noqa: E402
     Person,
     Position,
     RoleAssignment,
+    SalaryComponent,
     Tenant,
     TenantContractPolicy,
     User,
 )
 from app.services import effective_dating as ed  # noqa: E402
 from app.services import lifecycle as lc_service  # noqa: E402
+from app.services import payroll as payroll_service  # noqa: E402
 from app.services.audit import write_audit  # noqa: E402
 
 ADMIN_EMAIL = "admin@hashiru.id"
@@ -311,6 +313,46 @@ def main() -> None:
         add_comp("Rina Kartika", date(2026, 1, 10),
                  {"gaji_pokok": 5000000, "tunjangan_tetap": 500000},
                  "hire", "Penetapan gaji awal")
+
+        # ---- Rekening bank demo (agar payroll run bisa dikunci) ----
+        _banks = {
+            "Budi Santoso": ("BCA", "8210101001"),
+            "Sari Wijaya": ("BCA", "8210101002"),
+            "Andi Pratama": ("Mandiri", "1370010101003"),
+            "Dewi Lestari": ("BCA", "8210101004"),
+            "Rina Kartika": ("BRI", "0021010101005"),
+        }
+        for _nama, (_bank, _acct) in _banks.items():
+            persons[_nama].bank_name = _bank
+            persons[_nama].bank_account_no = _acct
+        db.flush()
+
+        # ---- Katalog gaji Sprint 4 (PAY-001): 8 komponen + policy ----
+        payroll_service.seed_payroll_catalog(
+            db, tenant.id, admin.id, valid_from=date(2022, 1, 1))
+        _audit(db, tenant.id, admin.id, "create", "salary_component", None,
+               {"seeded": len(payroll_service.SALARY_COMPONENTS_SEED)},
+               "Seed: katalog komponen gaji demo")
+        for _nama, _emp in employments.items():
+            for _code, *_ in payroll_service.SALARY_COMPONENTS_SEED:
+                _comp = (
+                    db.execute(
+                        select(SalaryComponent).where(
+                            SalaryComponent.tenant_id == tenant.id,
+                            SalaryComponent.code == _code,
+                        )
+                    )
+                    .scalars()
+                    .first()
+                )
+                payroll_service.assign_component(
+                    db=db, tenant_id=tenant.id,
+                    employment_id=_emp.id, component_id=_comp.id,
+                    valid_from=_emp.start_date,
+                    event="salary_structure", event_reason="Komponen baru",
+                    created_by=admin.id,
+                )
+        db.flush()
 
         # ---- RBP: role, group, assignment, field permission ----
         group_all = PermissionGroup(

@@ -728,3 +728,129 @@ class DocumentOut(BaseModel):
     version: int
     is_current: bool
     notes: str | None
+
+
+# ------------------------------------------------------------------ Payroll (Sprint 4)
+class SalaryComponentCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    code: str | None = Field(default=None, max_length=60)  # kosong -> otomatis
+    kind: str = Field(pattern=r"^(earning|deduction)$")
+    calc_type: str = Field(pattern=r"^(fixed|formula)$")
+    amount_or_formula: str = Field(min_length=1)  # integer rupiah | ekspresi
+    is_taxable: bool = True
+    is_bpjs_base: bool = False
+    sequence: int = Field(default=100, ge=0, le=10000)
+    valid_from: date
+    event: str = Field(min_length=1, max_length=100)
+    event_reason: str = Field(min_length=1, max_length=255)
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class SalaryComponentVersionCreate(BaseModel):
+    kind: str | None = Field(default=None, pattern=r"^(earning|deduction)$")
+    calc_type: str | None = Field(default=None, pattern=r"^(fixed|formula)$")
+    amount_or_formula: str | None = None
+    is_taxable: bool | None = None
+    is_bpjs_base: bool | None = None
+    sequence: int | None = Field(default=None, ge=0, le=10000)
+    valid_from: date
+    event: str = Field(min_length=1, max_length=100)
+    event_reason: str = Field(min_length=1, max_length=255)
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class SalaryComponentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    code: str
+    name: str
+    kind: str | None = None
+    calc_type: str | None = None
+    amount_or_formula: str | None = None
+    is_taxable: bool | None = None
+    is_bpjs_base: bool | None = None
+    sequence: int | None = None
+    valid_from: date | None = None
+    valid_to: date | None = None
+
+
+class CompAssignmentCreate(BaseModel):
+    employment_id: uuid.UUID
+    component_id: uuid.UUID
+    valid_from: date
+    override_amount: int | None = Field(default=None, ge=0)
+    is_enabled: bool = True
+    event: str = Field(min_length=1, max_length=100)
+    event_reason: str = Field(min_length=1, max_length=255)
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class CompAssignmentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    employment_id: uuid.UUID
+    component_id: uuid.UUID
+    component_code: str | None = None
+    override_amount: int | None = None
+    is_enabled: bool | None = None
+    valid_from: date | None = None
+    valid_to: date | None = None
+
+
+class PayrollPolicyOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    pph21_method: str
+    thr_basis: str
+
+
+class PayrollPolicyUpdate(BaseModel):
+    pph21_method: str | None = Field(default=None,
+                                     pattern=r"^(gross|gross_up|net)$")
+    thr_basis: str | None = Field(default=None,
+                                  pattern=r"^(gaji_pokok|total_fixed)$")
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class PayrollRunCreate(BaseModel):
+    period: str = Field(min_length=7, max_length=7)  # "YYYY-MM"
+    pph21_method: str | None = Field(default=None,
+                                     pattern=r"^(gross|gross_up|net)$")
+    include_thr: bool = False
+    thr_holiday_date: date | None = None
+    overtime_hours: dict[str, int] = Field(default_factory=dict)
+    notes: str | None = Field(default=None, max_length=2000)
+
+
+class PayrollLineOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    employment_id: uuid.UUID
+    person_name: str
+    nik: str
+    ptkp: str
+    breakdown: dict
+    gross: int
+    total_deductions: int
+    pph21: int
+    pph21_borne_by: str
+    thr_amount: int
+    retro_amount: int
+    retro_detail: dict
+    take_home_pay: int
+    employer_cost: dict
+    bank_name: str | None
+    bank_account_no: str | None
+    validation_errors: list
+
+
+class PayrollRunOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    period: str
+    status: str
+    pph21_method: str
+    include_thr: bool
+    totals: dict
+    headcount: int
+    created_at: datetime
+    locked_at: datetime | None

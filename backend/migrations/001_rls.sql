@@ -52,7 +52,10 @@ BEGIN
             'field_permissions', 'audit_logs',
             'lifecycle_events', 'event_reasons',
             'contracts', 'contract_info', 'tenant_contract_policies',
-            'documents'
+            'documents',
+            'salary_components', 'salary_component_info',
+            'comp_assignments', 'comp_assignment_info',
+            'payroll_policies', 'payroll_runs', 'payroll_lines'
           )
     LOOP
         -- Isolasi tenant: baris hanya terlihat bila tenant_id cocok.
