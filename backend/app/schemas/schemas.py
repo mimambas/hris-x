@@ -5,7 +5,17 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+
+from app.services.validation import (
+    validate_bank_account,
+    validate_birth_date,
+    validate_bpjs,
+    validate_email,
+    validate_nik,
+    validate_npwp,
+    validate_ptkp,
+)
 
 model_config = ConfigDict(from_attributes=True)
 
@@ -53,7 +63,125 @@ class TenantOut(BaseModel):
 class PersonCreate(BaseModel):
     nik: str = Field(min_length=16, max_length=16, pattern=r"^\d{16}$")
     full_name: str = Field(min_length=1, max_length=200)
+    birth_place: str | None = Field(default=None, max_length=120)
+    birth_date: date | None = None
+    email: str | None = None
+    npwp: str | None = None
+    ptkp: str = "TK/0"
+    bpjs_kes_no: str | None = None
+    bpjs_tk_no: str | None = None
+    bank_name: str | None = Field(default=None, max_length=100)
+    bank_account_no: str | None = None
     reason: str = Field(min_length=1, max_length=500)
+
+    @field_validator("nik")
+    @classmethod
+    def _nik_valid(cls, v: str) -> str:
+        return validate_nik(v)
+
+    @field_validator("npwp")
+    @classmethod
+    def _npwp_valid(cls, v: str | None) -> str | None:
+        return validate_npwp(v)
+
+    @field_validator("ptkp")
+    @classmethod
+    def _ptkp_valid(cls, v: str) -> str:
+        return validate_ptkp(v)
+
+    @field_validator("email")
+    @classmethod
+    def _email_valid(cls, v: str | None) -> str | None:
+        return validate_email(v)
+
+    @field_validator("bpjs_kes_no")
+    @classmethod
+    def _bpjs_kes_valid(cls, v: str | None) -> str | None:
+        return validate_bpjs(v, "BPJS Kesehatan")
+
+    @field_validator("bpjs_tk_no")
+    @classmethod
+    def _bpjs_tk_valid(cls, v: str | None) -> str | None:
+        return validate_bpjs(v, "BPJS Ketenagakerjaan")
+
+    @field_validator("bank_account_no")
+    @classmethod
+    def _bank_acc_valid(cls, v: str | None) -> str | None:
+        return validate_bank_account(v)
+
+    @field_validator("birth_date")
+    @classmethod
+    def _birth_date_valid(cls, v: date | None) -> date | None:
+        return validate_birth_date(v)
+
+
+class PersonUpdate(BaseModel):
+    """PATCH person. PTKP sengaja TIDAK ada di sini: perubahan PTKP wajib
+    lewat POST /persons/{id}/ptkp-change agar versi CompInfo ikut dibuat."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    nik: str | None = Field(default=None, min_length=16, max_length=16,
+                            pattern=r"^\d{16}$")
+    full_name: str | None = Field(default=None, min_length=1, max_length=200)
+    birth_place: str | None = Field(default=None, max_length=120)
+    birth_date: date | None = None
+    email: str | None = None
+    npwp: str | None = None
+    bpjs_kes_no: str | None = None
+    bpjs_tk_no: str | None = None
+    bank_name: str | None = Field(default=None, max_length=100)
+    bank_account_no: str | None = None
+    reason: str = Field(min_length=1, max_length=500)
+
+    @field_validator("nik")
+    @classmethod
+    def _nik_valid(cls, v: str | None) -> str | None:
+        return validate_nik(v) if v is not None else None
+
+    @field_validator("npwp")
+    @classmethod
+    def _npwp_valid(cls, v: str | None) -> str | None:
+        return validate_npwp(v)
+
+    @field_validator("email")
+    @classmethod
+    def _email_valid(cls, v: str | None) -> str | None:
+        return validate_email(v)
+
+    @field_validator("bpjs_kes_no")
+    @classmethod
+    def _bpjs_kes_valid(cls, v: str | None) -> str | None:
+        return validate_bpjs(v, "BPJS Kesehatan")
+
+    @field_validator("bpjs_tk_no")
+    @classmethod
+    def _bpjs_tk_valid(cls, v: str | None) -> str | None:
+        return validate_bpjs(v, "BPJS Ketenagakerjaan")
+
+    @field_validator("bank_account_no")
+    @classmethod
+    def _bank_acc_valid(cls, v: str | None) -> str | None:
+        return validate_bank_account(v)
+
+    @field_validator("birth_date")
+    @classmethod
+    def _birth_date_valid(cls, v: date | None) -> date | None:
+        return validate_birth_date(v)
+
+
+class PtkpChangeRequest(BaseModel):
+    """Perubahan status PTKP: update Person.ptkp + sisipkan versi CompInfo baru
+    (event=data_update) agar PPh 21 memakai PTKP baru mulai tanggal efektif."""
+
+    ptkp: str
+    effective_date: date
+    reason: str = Field(min_length=1, max_length=500)
+
+    @field_validator("ptkp")
+    @classmethod
+    def _ptkp_valid(cls, v: str) -> str:
+        return validate_ptkp(v)
 
 
 class PersonOut(BaseModel):
@@ -61,6 +189,15 @@ class PersonOut(BaseModel):
     id: uuid.UUID
     nik: str
     full_name: str
+    birth_place: str | None
+    birth_date: date | None
+    email: str | None
+    npwp: str | None
+    ptkp: str
+    bpjs_kes_no: str | None
+    bpjs_tk_no: str | None
+    bank_name: str | None
+    bank_account_no: str | None
 
 
 class EmploymentCreate(BaseModel):
@@ -147,6 +284,7 @@ class CompInfoOut(BaseModel):
     seq_no: int
     pay_group: str
     components: dict
+    ptkp: str
     event: str
     event_reason: str
 
@@ -452,3 +590,141 @@ class CustomFieldValueOut(BaseModel):
     field_type: str
     value: str | None
     definition_active: bool
+
+
+# ------------------------------------------------------------------ Lifecycle (CHR-002)
+class EventReasonOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    reason: str
+    is_active: bool
+
+
+class LifecycleEventOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    code: str
+    name: str
+    description: str | None
+    applies_to: str
+    is_active: bool
+    reasons: list[EventReasonOut] = []
+
+
+class LifecycleEventCreate(BaseModel):
+    code: str = Field(min_length=1, max_length=60, pattern=r"^[a-z0-9_]+$")
+    name: str = Field(min_length=1, max_length=120)
+    description: str | None = Field(default=None, max_length=500)
+    applies_to: str = Field(default="lifecycle", pattern=r"^(lifecycle|org)$")
+    reasons: list[str] = Field(default_factory=list)
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class LifecycleEventUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    description: str | None = Field(default=None, max_length=500)
+    is_active: bool | None = None
+    reasons: list[str] | None = None  # ganti seluruh daftar alasan
+    reason: str = Field(min_length=1, max_length=500)
+
+
+# ------------------------------------------------------------------ Kontrak (CHR-006)
+class ContractCreate(BaseModel):
+    employment_id: uuid.UUID
+    contract_type: str = Field(pattern=r"^(?i)(pkwt|pkwtt)$")
+    contract_number: str | None = Field(default=None, max_length=80)
+    start_date: date
+    end_date: date | None = None  # wajib untuk PKWT
+    event: str = Field(min_length=1, max_length=100)
+    event_reason: str = Field(min_length=1, max_length=255)
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class ContractVersionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    contract_id: uuid.UUID
+    contract_type: str
+    contract_number: str
+    valid_from: date
+    valid_to: date
+    seq_no: int
+    event: str
+    event_reason: str
+
+
+class ContractOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    employment_id: uuid.UUID
+    current_version: ContractVersionOut | None = None
+    versions: list[ContractVersionOut] = []
+
+
+class ContractExtendRequest(BaseModel):
+    new_end_date: date
+    new_contract_number: str | None = Field(default=None, max_length=80)
+    event_reason: str = Field(min_length=1, max_length=255)
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class ContractConvertRequest(BaseModel):
+    effective_date: date | None = None  # default: hari setelah versi berjalan berakhir
+    new_contract_number: str | None = Field(default=None, max_length=80)
+    event_reason: str = Field(min_length=1, max_length=255)
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class ContractPolicyOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    tenant_id: uuid.UUID
+    max_pkwt_months: int
+    max_extensions: int
+
+
+class ContractPolicyUpdate(BaseModel):
+    max_pkwt_months: int | None = Field(default=None, ge=1, le=120)
+    max_extensions: int | None = Field(default=None, ge=0, le=10)
+    reason: str = Field(min_length=1, max_length=500)
+
+
+# ------------------------------------------------------------------ Impor Excel (CHR-007)
+class ImportRowError(BaseModel):
+    field: str
+    message: str
+
+
+class ImportRowReport(BaseModel):
+    row_number: int  # nomor baris di Excel (1-based, termasuk header)
+    status: str  # "valid" | "invalid"
+    errors: list[ImportRowError] = []
+    preview: dict = {}  # nik + nama untuk identifikasi cepat
+
+
+class ImportDryRunResponse(BaseModel):
+    filename: str
+    total_rows: int
+    valid_rows: int
+    invalid_rows: int
+    rows: list[ImportRowReport] = []  # hanya baris invalid (ringkas)
+
+
+class ImportCommitResponse(BaseModel):
+    filename: str
+    imported: int
+    person_ids: list[uuid.UUID] = []
+
+
+# ------------------------------------------------------------------ Dokumen (CHR-012 dasar)
+class DocumentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    person_id: uuid.UUID | None
+    employment_id: uuid.UUID | None
+    doc_type: str
+    file_name: str
+    mime_type: str
+    size_bytes: int
+    version: int
+    is_current: bool
+    notes: str | None

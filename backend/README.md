@@ -100,6 +100,65 @@ curl -s -X POST localhost:8000/api/v1/custom-fields/values \
 Akun seed: `admin@hashiru.id` / `Password123!` (superadmin),
 `dewi@hashiru.id` (Manajer, via grup dinamis), `budi@hashiru.id` (Karyawan).
 
+# Kontrak PKWT baru (nomor otomatis, periode + batas 60 bulan)
+curl -s -X POST localhost:8000/api/v1/contracts \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"employment_id":"<uuid>","contract_type":"PKWT","start_date":"2026-01-10","end_date":"2026-12-31","event":"hire","event_reason":"Rekrutmen reguler","reason":"demo"}'
+
+# Kontrak yang berakhir <= 30 hari
+curl -s "localhost:8000/api/v1/contracts/expiring?within_days=30" \
+  -H "Authorization: Bearer $TOKEN"
+
+# Unduh template impor, dry-run, lalu commit
+curl -s -o template.xlsx localhost:8000/api/v1/imports/employees/template \
+  -H "Authorization: Bearer $TOKEN"
+curl -s -X POST localhost:8000/api/v1/imports/employees/dry-run \
+  -H "Authorization: Bearer $TOKEN" -F "file=@karyawan.xlsx"
+curl -s -X POST localhost:8000/api/v1/imports/employees/commit \
+  -H "Authorization: Bearer $TOKEN" -F "file=@karyawan.xlsx"
+
+# Ganti PTKP (atomik: person + versi comp baru)
+curl -s -X POST localhost:8000/api/v1/persons/<uuid>/ptkp-change \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"ptkp":"K/1","effective_date":"2026-10-01","reason":"Menikah"}'
+
+# Upload dokumen KTP (versi 1)
+curl -s -X POST localhost:8000/api/v1/documents \
+  -H "Authorization: Bearer $TOKEN" \
+  -F "doc_type=ktp" -F "person_id=<uuid>" -F "file=@ktp.pdf"
+```
+
+## Yang baru di Sprint 3 (PRD 4: CHR-003 s.d. CHR-012)
+
+- **Katalog lifecycle** (CHR-003/004): event & alasan tersimpan sebagai
+  data per tenant (`/lifecycle/events`, `/lifecycle/reasons`) — di-seed
+  otomatis untuk tenant baru. Event wajib kode katalog (case-insensitive,
+  disimpan kanonis); `insert_record` kini wajib `event_applies_to`.
+  Terminasi otomatis menutup employment (`status=terminated`,
+  `end_date=valid_from`); rehire = employment baru di person yang sama.
+  Aturan keras: `data_update` tidak mengubah status.
+- **Validasi Indonesia** (CHR-005/006): NIK 16 digit unik, NPWP 16 digit
+  (ternormalisasi), PTKP dari daftar resmi (default `TK/0`), email unik
+  lowercase, no. BPJS Kes 13 / TK 11 digit, rekening numerik, tanggal
+  lahir tak boleh masa depan. PATCH person menolak field `ptkp`.
+- **PTKP**: `POST /persons/{id}/ptkp-change` — atomik: update person +
+  versi `CompInfo` baru (event `data_update`), nominal gaji disalin.
+- **Kontrak berversi** (CHR-010/011): `/contracts` CRUD + `extend`
+  (batas `max_extensions` policy), `convert` PKWT→PKWTT, `expiring`
+  (peringatan 30/14/7 hari, terurut), `policy` GET/PUT per tenant
+  (default 60 bulan, 1x perpanjangan). Extend/convert/akhir kontrak
+  ikut tercatat sebagai sidecar di timeline job.
+- **Impor Excel** (CHR-007): `GET /imports/employees/template` (xlsx +
+  sheet Panduan), `POST .../dry-run` (laporan per baris, 0 tulis DB),
+  `POST .../commit` (atomik: 1 baris gagal → rollback penuh, audit
+  `channel=import`). Cocokkan master by nama, job by kode. Data contoh
+  500 karyawan: `sample_data/karyawan_500.xlsx` (dibuat via
+  `scripts/generate_sample_employees.py`).
+- **Dokumen** (CHR-012): `POST /documents` (multipart, whitelist
+  ekstensi) — berversi per (person, doc_type), `is_current`,
+  `GET /documents/{id}/download` (cek populasi berkas di disk).
+  Berkas: `backend/uploads/` (di-gitignore).
+
 ## Yang baru di Sprint 2 (PRD 15.1, 9.2)
 
 - **Org bertanggal efektif** (CHR-001): LegalEntity/OrgUnit/Location/
@@ -137,8 +196,8 @@ Akun seed: `admin@hashiru.id` / `Password123!` (superadmin),
 - Workflow engine & approval (PLT-030 s.d. PLT-037)
 - SoD, masking data sensitif, proxy login, laporan izin (PLT-042 s.d. PLT-045)
 - Rantai hash audit (PLT-051), audit akses baca field sensitif (PLT-052)
-- Notifikasi, SSO/OIDC, import Excel, mobile/ESS
-- Modul: absensi, cuti, payroll, rekrutmen, dst. (Sprint S3+)
+- Notifikasi, SSO/OIDC, mobile/ESS
+- Modul: absensi, cuti, payroll, rekrutmen, dst. (Sprint 4+)
 
 ## Penyederhanaan vs PRD (jujur)
 

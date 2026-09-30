@@ -46,6 +46,7 @@ from app.models import (
     User,
 )
 from app.services import effective_dating as ed
+from app.services import lifecycle as lc_service
 
 PASSWORD = "Password123!"
 
@@ -90,7 +91,8 @@ def _mkperson_emp_job(db, tenant_id, nik, name, le_id, loc_id, job_id, org_id,
         valid_from=start,
         values={"job_id": job_id, "org_unit_id": org_id, "location_id": loc_id,
                 "manager_employment_id": None},
-        event="Hire", event_reason="Fixture", created_by=created_by,
+        event="hire", event_reason="Lainnya", created_by=created_by,
+                event_applies_to="lifecycle",
     )
     return p, e, j
 
@@ -105,6 +107,7 @@ def ctx(app):
         db.flush()
         # Admin dibuat di awal agar bisa menjadi created_by record fixture.
         admin_a = _mkuser(db, ta.id, "admin_a@x.id", superadmin=True)
+        lc_service.seed_lifecycle_catalog(db, ta.id, admin_a.id)
 
         # ---- Struktur organisasi S2: identitas + info berversi ----
         org_from = date(2020, 1, 1)
@@ -118,7 +121,8 @@ def ctx(app):
                 identity_field="legal_entity_id", identity_value=row.id,
                 valid_from=org_from,
                 values={"name": name, "npwp": npwp},
-                event="Pendirian", event_reason="Fixture", created_by=admin_a.id)
+                event="org_founded", event_reason="Lainnya", created_by=admin_a.id,
+                event_applies_to="org")
             return row
 
         def _mk_loc(name):
@@ -130,7 +134,8 @@ def ctx(app):
                 identity_field="location_id", identity_value=row.id,
                 valid_from=org_from,
                 values={"name": name, "timezone": "Asia/Jakarta"},
-                event="Pembukaan", event_reason="Fixture", created_by=admin_a.id)
+                event="org_opened", event_reason="Lainnya", created_by=admin_a.id,
+                event_applies_to="org")
             return row
 
         def _mk_ou(name, le_row, parent=None):
@@ -143,7 +148,8 @@ def ctx(app):
                 valid_from=org_from,
                 values={"name": name, "parent_id": parent.id if parent else None,
                         "legal_entity_id": le_row.id, "is_active": True},
-                event="Pembentukan", event_reason="Fixture", created_by=admin_a.id)
+                event="org_unit_created", event_reason="Lainnya", created_by=admin_a.id,
+                event_applies_to="org")
             return row
 
         le = _mk_le("PT Hashiru", "01")
@@ -223,6 +229,7 @@ def ctx(app):
         db.add(tb)
         db.flush()
         admin_b = _mkuser(db, tb.id, "admin_b@x.id", superadmin=True)
+        lc_service.seed_lifecycle_catalog(db, tb.id, admin_b.id)
         p_b = Person(tenant_id=tb.id, nik="9999999999999999", full_name="Orang B")
         db.add(p_b)
         db.flush()

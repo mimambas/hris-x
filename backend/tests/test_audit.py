@@ -43,8 +43,8 @@ def test_insert_dan_correct_tercatat_dengan_old_new(client, ctx):
         "job_id": str(ctx["job_stf"].id),
         "org_unit_id": str(ctx["ou"].id),
         "location_id": str(ctx["loc_b"].id),
-        "event": "Mutasi",
-        "event_reason": "Uji audit",
+        "event": "mutation",
+        "event_reason": "Lainnya",
         "reason": "Mutasi awal",
     }
     record_id = client.post("/api/v1/job-info", json=payload,

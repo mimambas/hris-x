@@ -49,9 +49,11 @@ from app.models import (  # noqa: E402
     Position,
     RoleAssignment,
     Tenant,
+    TenantContractPolicy,
     User,
 )
 from app.services import effective_dating as ed  # noqa: E402
+from app.services import lifecycle as lc_service  # noqa: E402
 from app.services.audit import write_audit  # noqa: E402
 
 ADMIN_EMAIL = "admin@hashiru.id"
@@ -103,6 +105,11 @@ def main() -> None:
         _audit(db, tenant.id, admin.id, "create", "tenant", tenant.id,
                {"name": tenant.name, "slug": tenant.slug}, "Seed: tenant demo")
 
+        # Sprint 3 (CHR-002): katalog event lifecycle + alasan per tenant.
+        lc_service.seed_lifecycle_catalog(db, tenant.id, admin.id)
+        db.add(TenantContractPolicy(tenant_id=tenant.id))  # default: 60 bln, 1x
+        db.flush()
+
         # ---- Struktur organisasi (Sprint 2: identitas + info berversi) ----
         def add_le(name, npwp):
             le = LegalEntity(tenant_id=tenant.id)
@@ -113,8 +120,9 @@ def main() -> None:
                 identity_field="legal_entity_id", identity_value=le.id,
                 valid_from=ORG_VALID_FROM,
                 values={"name": name, "npwp": npwp},
-                event="Pendirian", event_reason="Seed: struktur awal perusahaan",
+                event="org_founded", event_reason="Lainnya",
                 created_by=admin.id,
+                event_applies_to="org",
             )
             _audit(db, tenant.id, admin.id, "insert", "legal_entity_info", ver.id,
                    {"name": name}, "Seed: legal entity demo")
@@ -129,8 +137,9 @@ def main() -> None:
                 identity_field="location_id", identity_value=loc.id,
                 valid_from=ORG_VALID_FROM,
                 values={"name": name, "timezone": timezone},
-                event="Pembukaan", event_reason="Seed: lokasi awal perusahaan",
+                event="org_opened", event_reason="Lainnya",
                 created_by=admin.id,
+                event_applies_to="org",
             )
             _audit(db, tenant.id, admin.id, "insert", "location_info", ver.id,
                    {"name": name}, "Seed: lokasi demo")
@@ -148,8 +157,9 @@ def main() -> None:
                         "parent_id": parent.id if parent else None,
                         "legal_entity_id": legal_entity.id,
                         "is_active": True},
-                event="Pembentukan", event_reason="Seed: struktur awal organisasi",
+                event="org_unit_created", event_reason="Lainnya",
                 created_by=admin.id,
+                event_applies_to="org",
             )
             _audit(db, tenant.id, admin.id, "insert", "org_unit_info", ver.id,
                    {"name": name}, "Seed: unit organisasi demo")
@@ -177,8 +187,9 @@ def main() -> None:
             valid_from=ORG_VALID_FROM,
             values={"code": "CC-ENG-01", "name": "Pusat Biaya Engineering",
                     "org_unit_id": dept_eng.id, "is_active": True},
-            event="Pembentukan", event_reason="Seed: cost center demo",
+            event="org_unit_created", event_reason="Lainnya",
             created_by=admin.id,
+                event_applies_to="org",
         )
         _audit(db, tenant.id, admin.id, "insert", "cost_center_info", cc_ver.id,
                {"code": "CC-ENG-01"}, "Seed: cost center demo")
@@ -239,6 +250,7 @@ def main() -> None:
                         "manager_employment_id": (
                             employments[manager_nama].id if manager_nama else None)},
                 event=event, event_reason=event_reason, created_by=admin.id,
+                event_applies_to="lifecycle",
             )
             _audit(db, tenant.id, admin.id, "insert", "job_info", rec.id,
                    {"employment": nama, "job": job.title,
@@ -247,20 +259,20 @@ def main() -> None:
             return rec
 
         add_job("Budi Santoso", date(2024, 3, 1), job_staff, tim_be, loc_jkt,
-                "Hire", "Rekrutmen karyawan baru", manager_nama="Dewi Lestari")
+                "hire", "Rekrutmen reguler", manager_nama="Dewi Lestari")
         # Skenario PRD 9.3: promosi bertanggal masa depan.
         add_job("Budi Santoso", date(2026, 11, 1), job_spv, tim_be, loc_jkt,
-                "Promosi", "Kenaikan jabatan reguler", manager_nama="Dewi Lestari")
+                "promotion", "Kenaikan jabatan reguler", manager_nama="Dewi Lestari")
         add_job("Sari Wijaya", date(2025, 6, 1), job_staff, tim_be, loc_jkt,
-                "Hire", "Rekrutmen karyawan baru", manager_nama="Dewi Lestari")
+                "hire", "Rekrutmen reguler", manager_nama="Dewi Lestari")
         add_job("Sari Wijaya", date(2026, 7, 1), job_spv, tim_be, loc_jkt,
-                "Promosi", "Kenaikan jabatan reguler", manager_nama="Dewi Lestari")
+                "promotion", "Kenaikan jabatan reguler", manager_nama="Dewi Lestari")
         add_job("Andi Pratama", date(2023, 1, 15), job_staff, dept_log, loc_bks,
-                "Hire", "Rekrutmen karyawan baru")
+                "hire", "Rekrutmen reguler")
         add_job("Dewi Lestari", date(2022, 8, 1), job_mgr, dept_eng, loc_jkt,
-                "Hire", "Rekrutmen karyawan baru")
+                "hire", "Rekrutmen reguler")
         add_job("Rina Kartika", date(2026, 1, 10), job_staff, dept_log, loc_bks,
-                "Hire", "Kontrak PKWT 12 bulan")
+                "hire", "Rekrutmen reguler")
 
         # ---- Riwayat CompInfo (nominal integer rupiah) ----
         def add_comp(nama, valid_from, components, event, event_reason):
@@ -271,6 +283,7 @@ def main() -> None:
                 valid_from=valid_from,
                 values={"pay_group": "Bulanan", "components": components},
                 event=event, event_reason=event_reason, created_by=admin.id,
+                event_applies_to="lifecycle",
             )
             _audit(db, tenant.id, admin.id, "insert", "comp_info", rec.id,
                    {"employment": nama, "valid_from": valid_from.isoformat(),
@@ -279,25 +292,25 @@ def main() -> None:
 
         add_comp("Budi Santoso", date(2024, 3, 1),
                  {"gaji_pokok": 8000000, "tunjangan_tetap": 2000000},
-                 "Hire", "Penetapan gaji awal")
+                 "hire", "Penetapan gaji awal")
         add_comp("Budi Santoso", date(2026, 11, 1),
                  {"gaji_pokok": 11000000, "tunjangan_tetap": 2500000},
-                 "Promosi", "Penyesuaian gaji promosi")
+                 "promotion", "Penyesuaian gaji promosi")
         add_comp("Sari Wijaya", date(2025, 6, 1),
                  {"gaji_pokok": 7500000, "tunjangan_tetap": 1500000},
-                 "Hire", "Penetapan gaji awal")
+                 "hire", "Penetapan gaji awal")
         add_comp("Sari Wijaya", date(2026, 7, 1),
                  {"gaji_pokok": 10000000, "tunjangan_tetap": 2000000},
-                 "Promosi", "Penyesuaian gaji promosi")
+                 "promotion", "Penyesuaian gaji promosi")
         add_comp("Andi Pratama", date(2023, 1, 15),
                  {"gaji_pokok": 5500000, "tunjangan_tetap": 1000000},
-                 "Hire", "Penetapan gaji awal")
+                 "hire", "Penetapan gaji awal")
         add_comp("Dewi Lestari", date(2022, 8, 1),
                  {"gaji_pokok": 18000000, "tunjangan_tetap": 4000000},
-                 "Hire", "Penetapan gaji awal")
+                 "hire", "Penetapan gaji awal")
         add_comp("Rina Kartika", date(2026, 1, 10),
                  {"gaji_pokok": 5000000, "tunjangan_tetap": 500000},
-                 "Hire", "Penetapan gaji awal")
+                 "hire", "Penetapan gaji awal")
 
         # ---- RBP: role, group, assignment, field permission ----
         group_all = PermissionGroup(

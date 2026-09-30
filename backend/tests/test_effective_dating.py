@@ -10,7 +10,7 @@ from app.models import MAX_DATE, JobInfo
 from app.services import effective_dating as ed
 
 
-def _insert(db, ctx, emp_id, valid_from, job_id, event="Mutasi", reason="Uji"):
+def _insert(db, ctx, emp_id, valid_from, job_id, event="mutation", reason="Lainnya"):
     return ed.insert_record(
         db=db,
         tenant_id=ctx["ta"].id,
@@ -23,6 +23,7 @@ def _insert(db, ctx, emp_id, valid_from, job_id, event="Mutasi", reason="Uji"):
         event=event,
         event_reason=reason,
         created_by=_admin_id(db, ctx),
+        event_applies_to="lifecycle",
     )
 
 
@@ -58,7 +59,7 @@ def test_insert_mundur_memotong_dan_mengisi_celah(ctx):
     _insert(db, ctx, emp, date(2024, 1, 1), ctx["job_stf"].id)
     _insert(db, ctx, emp, date(2024, 9, 1), ctx["job_mgr"].id)
     tengah = _insert(db, ctx, emp, date(2024, 4, 1), ctx["job_stf"].id,
-                     event="Koreksi historis")
+                     event="data_update")
     db.refresh(tengah)
     # Record pertama tertutup H-1, record baru berakhir sebelum record berikut.
     first = _asof(db, ctx, emp, date(2024, 3, 31))
@@ -93,7 +94,7 @@ def test_record_masa_depan_tak_mempengaruhi_hari_ini(ctx):
     emp = ctx["e_staff"].id
     _insert(db, ctx, emp, date(2024, 1, 1), ctx["job_stf"].id)
     masa_depan = date.today() + timedelta(days=60)
-    _insert(db, ctx, emp, masa_depan, ctx["job_mgr"].id, event="Promosi")
+    _insert(db, ctx, emp, masa_depan, ctx["job_mgr"].id, event="promotion")
     hari_ini = _asof(db, ctx, emp, date.today())
     assert hari_ini.job_id == ctx["job_stf"].id
     nanti = _asof(db, ctx, emp, masa_depan)
@@ -157,4 +158,5 @@ def test_event_reason_wajib(ctx):
             values={"job_id": ctx["job_stf"].id, "org_unit_id": ctx["ou"].id,
                     "location_id": ctx["loc_b"].id},
             event="", event_reason="", created_by=_admin_id(db, ctx),
+            event_applies_to="lifecycle",
         )

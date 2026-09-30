@@ -24,6 +24,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import MAX_DATE
+from app.services import lifecycle
 
 # Kolom yang tidak boleh diubah lewat correct_record (kunci riwayat).
 _PROTECTED_FIELDS = frozenset(
@@ -43,13 +44,28 @@ def insert_record(
     event: str,
     event_reason: str,
     created_by,
+    event_applies_to: str,
+    valid_to: date | None = None,
 ) :
     """Sisipkan record bertanggal efektif baru; otomatis menutup record lama.
+
+    Aturan keras Sprint 3 (CHR-002): event + event_reason HARUS terdaftar di
+    katalog event tenant (``event_applies_to`` = "lifecycle" | "org").
+    ValueError dipetakan menjadi 422 di lapisan API.
+
+    ``valid_to`` eksplisit (mis. akhir kontrak PKWT); default mengikuti
+    record berikutnya atau MAX_DATE.
 
     Mengembalikan record baru yang sudah di-flush (belum commit).
     """
     if not event or not event_reason:
         raise ValueError("event dan event_reason wajib diisi (CHR-004)")
+    # Validasi katalog per tenant; sekaligus normalisasi ke kode kanonis.
+    event = lifecycle.validate_event(
+        db, tenant_id, event, event_reason, applies_to=event_applies_to
+    )
+    if valid_to is not None and valid_to < valid_from:
+        raise ValueError("valid_to tidak boleh sebelum valid_from")
 
     ident = getattr(model, identity_field) == identity_value
     in_tenant = model.tenant_id == tenant_id
@@ -81,7 +97,8 @@ def insert_record(
         )
         for rec in covering:
             rec.valid_to = valid_from - timedelta(days=1)
-        # valid_to record baru = sehari sebelum record berikutnya (jika ada).
+        # valid_to record baru = sehari sebelum record berikutnya (jika ada),
+        # atau valid_to eksplisit bila diberikan (mis. akhir kontrak PKWT).
         nxt = (
             db.execute(
                 select(model)
@@ -92,7 +109,16 @@ def insert_record(
             .scalars()
             .first()
         )
-        valid_to = (nxt.valid_from - timedelta(days=1)) if nxt else MAX_DATE
+        if valid_to is not None:
+            if nxt is not None and valid_to >= nxt.valid_from:
+                raise ValueError(
+                    "valid_to bertabrakan dengan versi berikutnya "
+                    f"({nxt.valid_from.isoformat()})"
+                )
+            valid_to_new = valid_to
+        else:
+            valid_to_new = (nxt.valid_from - timedelta(days=1)) if nxt else MAX_DATE
+        valid_to = valid_to_new
         seq_no = 1
 
     record = model(
@@ -118,11 +144,13 @@ def correct_record(
     model,
     record_id,
     values: dict,
+    event_applies_to: str | None = None,
 ) :
     """Betulkan record yang salah tanpa menambah riwayat.
 
     Mengembalikan (record, old_values). Melempar KeyError bila record
-    tidak ada di tenant ini; ValueError bila mencoba mengubah kunci riwayat.
+    tidak ada di tenant ini; ValueError bila mencoba mengubah kunci riwayat
+    atau bila event/event_reason hasil koreksi tak terdaftar di katalog.
     """
     record = db.get(model, record_id)
     if record is None or record.tenant_id != tenant_id:
@@ -133,6 +161,17 @@ def correct_record(
         raise ValueError(
             f"Field {sorted(forbidden)} tidak boleh diubah via correct; gunakan insert."
         )
+
+    if event_applies_to is not None and (
+        "event" in values or "event_reason" in values
+    ):
+        merged_event = values.get("event", record.event)
+        merged_reason = values.get("event_reason", record.event_reason)
+        values["event"] = lifecycle.validate_event(
+            db, tenant_id, merged_event, merged_reason, applies_to=event_applies_to
+        )
+        if "event_reason" in values:
+            values["event_reason"] = values["event_reason"].strip()
 
     old_values = {}
     for key, new_value in values.items():

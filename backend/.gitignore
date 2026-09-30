@@ -6,3 +6,5 @@ __pycache__/
 *.db-journal
 .env
 .venv/
+# Berkas upload dokumen karyawan (Sprint 3, CHR-012) — data lokal, jangan commit.
+uploads/

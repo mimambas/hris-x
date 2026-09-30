@@ -69,12 +69,24 @@ class Person(Base):
     tenant_id: Mapped[uuid.UUID] = _tenant_fk()
     nik: Mapped[str] = mapped_column(String(16), nullable=False)  # NIK 16 digit, unik per tenant
     full_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    # --- Data identitas Indonesia (Sprint 3, CHR-005) ---
+    birth_place: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    birth_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    npwp: Mapped[str | None] = mapped_column(String(16), nullable=True)  # format baru 16 digit
+    ptkp: Mapped[str] = mapped_column(String(4), nullable=False, default="TK/0")
+    bpjs_kes_no: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    bpjs_tk_no: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    bank_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    bank_account_no: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
     __table_args__ = (
         UniqueConstraint("tenant_id", "nik", name="uq_persons_tenant_nik"),
+        # Unik per tenant bila diisi; NULL tetap boleh ganda (SQLite & Postgres).
+        UniqueConstraint("tenant_id", "email", name="uq_persons_tenant_email"),
     )
 
 
@@ -446,6 +458,9 @@ class CompInfo(Base, EffectiveDatedMixin):
     # Komponen gaji sebagai JSON; nominal WAJIB integer rupiah (PRD 18.4 aturan 3).
     # Contoh: {"gaji_pokok": 8000000, "tunjangan_tetap": 2000000}
     components: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    # Status PTKP yang dipakai perhitungan PPh 21 untuk versi ini
+    # (Sprint 3, CHR-005). Disalin dari Person.ptkp saat versi dibuat.
+    ptkp: Mapped[str] = mapped_column(String(8), nullable=False, default="TK/0")
 
     __table_args__ = (
         UniqueConstraint(
@@ -570,4 +585,161 @@ class AuditLog(Base):
 
     __table_args__ = (
         Index("ix_audit_tenant_created", "tenant_id", "created_at"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Katalog event lifecycle + alasan (Sprint 3, CHR-002).
+#
+# Setiap tenant punya katalog event sendiri. Kode event stabil (dipakai
+# derivasi status & API); nama boleh diubah admin tanpa merusak histori.
+# Aturan keras: insert JobInfo/CompInfo/ContractInfo tanpa event+reason yang
+# terdaftar di katalog -> ValueError -> 422 di API.
+# ---------------------------------------------------------------------------
+class LifecycleEvent(Base):
+    """Satu baris katalog event milik tenant."""
+
+    __tablename__ = "lifecycle_events"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    code: Mapped[str] = mapped_column(String(60), nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # "lifecycle" (hire/promosi/...) | "org" (pendirian/restrukturisasi/...)
+    applies_to: Mapped[str] = mapped_column(String(20), nullable=False, default="lifecycle")
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "code", name="uq_lifecycle_tenant_code"),
+        Index("ix_lifecycle_tenant_applies", "tenant_id", "applies_to"),
+    )
+
+
+class EventReason(Base):
+    """Alasan yang diizinkan untuk satu event (dipilih user saat insert)."""
+
+    __tablename__ = "event_reasons"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    event_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("lifecycle_events.id"), nullable=False, index=True
+    )
+    reason: Mapped[str] = mapped_column(String(255), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "event_id", "reason", name="uq_eventreason_tenant_event_reason"
+        ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Kontrak kerja (Sprint 3, CHR-006).
+#
+# Pola identitas + info berversi (konsisten ADR-0004): masa berlaku kontrak
+# = valid_from..valid_to pada ContractInfo. PKWTT memakai valid_to = MAX_DATE
+# (kontrak terbuka, tak pernah "expiring"). Perpanjangan/konversi = versi baru.
+# ---------------------------------------------------------------------------
+class Contract(Base):
+    """Identitas kontrak: satu employment dapat memiliki rangkaian versi kontrak."""
+
+    __tablename__ = "contracts"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    employment_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("employments.id"), nullable=False, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class ContractInfo(Base, EffectiveDatedMixin):
+    """Versi kontrak (PKWT/PKWTT) bertanggal efektif."""
+
+    __tablename__ = "contract_info"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    contract_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("contracts.id"), nullable=False, index=True
+    )
+    contract_type: Mapped[str] = mapped_column(String(10), nullable=False)  # PKWT | PKWTT
+    contract_number: Mapped[str] = mapped_column(String(80), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "contract_id", "valid_from", "seq_no", name="uq_contractinfo_c_from_seq"
+        ),
+        Index("ix_contractinfo_c_from", "contract_id", "valid_from"),
+    )
+
+
+class TenantContractPolicy(Base):
+    """Aturan main kontrak per tenant (batas durasi & perpanjangan PKWT)."""
+
+    __tablename__ = "tenant_contract_policies"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("tenants.id"), nullable=False, unique=True, index=True
+    )
+    max_pkwt_months: Mapped[int] = mapped_column(Integer, nullable=False, default=60)
+    max_extensions: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Dokumen karyawan (Sprint 3, CHR-012 dasar — tanpa e-sign).
+#
+# Satu dokumen = satu file. Upload baru untuk (person, doc_type) yang sama
+# menaikkan version; versi lama tetap tersimpan (is_current=False).
+# file_path relatif terhadap direktori upload aplikasi.
+# ---------------------------------------------------------------------------
+DOCUMENT_TYPES = ("ktp", "kk", "npwp_card", "ijazah", "kontrak", "paklaring", "lain")
+
+
+class Document(Base):
+    __tablename__ = "documents"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    person_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("persons.id"), nullable=True, index=True
+    )
+    employment_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("employments.id"), nullable=True, index=True
+    )
+    doc_type: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    file_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    mime_type: Mapped[str] = mapped_column(String(120), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    file_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    is_current: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    uploaded_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        Index("ix_documents_tenant_person_type", "tenant_id", "person_id", "doc_type"),
     )

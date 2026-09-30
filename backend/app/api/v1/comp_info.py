@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from app.api.v1.common import client_ip, snapshot
 from app.core.db import get_db
 from app.core.deps import get_current_user, require_permission
-from app.models import CompInfo, Employment, User
+from app.models import CompInfo, Employment, Person, User
 from app.schemas.schemas import CompInfoCreate, CompInfoCorrect, CompInfoOut
 from app.services import effective_dating as ed
 from app.services.audit import write_audit
@@ -24,7 +24,7 @@ router = APIRouter(tags=["comp-info"])
 
 _FIELDS = [
     "id", "employment_id", "valid_from", "valid_to", "seq_no",
-    "pay_group", "components", "event", "event_reason",
+    "pay_group", "components", "ptkp", "event", "event_reason",
 ]
 
 
@@ -61,8 +61,9 @@ def insert_comp_info(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    _get_employment_or_404(db, user, body.employment_id)
+    emp = _get_employment_or_404(db, user, body.employment_id)
     _validate_components(body.components)
+    person = db.get(Person, emp.person_id)
     try:
         record = ed.insert_record(
             db=db,
@@ -71,10 +72,16 @@ def insert_comp_info(
             identity_field="employment_id",
             identity_value=body.employment_id,
             valid_from=body.valid_from,
-            values={"pay_group": body.pay_group, "components": body.components},
+            values={
+                "pay_group": body.pay_group,
+                "components": body.components,
+                # PTKP versi ini disalin dari Person saat insert (CHR-005).
+                "ptkp": person.ptkp if person else "TK/0",
+            },
             event=body.event,
             event_reason=body.event_reason,
             created_by=user.id,
+            event_applies_to="lifecycle",
         )
     except ValueError as e:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e))
@@ -126,6 +133,7 @@ def correct_comp_info(
             model=CompInfo,
             record_id=record_id,
             values=values,
+            event_applies_to="lifecycle",
         )
     except KeyError:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Record tidak ditemukan")

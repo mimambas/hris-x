@@ -13,7 +13,7 @@ from datetime import date, timedelta
 from tests.conftest import login_headers
 
 
-def _job_payload(ctx, emp_id, valid_from, job_id, event="Promosi",
+def _job_payload(ctx, emp_id, valid_from, job_id, event="promotion",
                  reason="Kenaikan jabatan reguler"):
     return {
         "employment_id": str(emp_id),
@@ -27,14 +27,15 @@ def _job_payload(ctx, emp_id, valid_from, job_id, event="Promosi",
     }
 
 
-def _comp_payload(ctx, emp_id, valid_from, gaji_pokok, event="Promosi"):
+def _comp_payload(ctx, emp_id, valid_from, gaji_pokok, event="promotion",
+                 reason="Penyesuaian gaji promosi"):
     return {
         "employment_id": str(emp_id),
         "valid_from": valid_from.isoformat(),
         "pay_group": "Bulanan",
         "components": {"gaji_pokok": gaji_pokok, "tunjangan_tetap": 1000000},
         "event": event,
-        "event_reason": "Penyesuaian gaji promosi",
+        "event_reason": reason,
         "reason": "Uji skenario PRD 9.3",
     }
 
@@ -56,11 +57,11 @@ def test_prd93_promosi_masa_depan(client, ctx):
     # Given: Staff sejak hire.
     r = client.post("/api/v1/job-info",
                     json=_job_payload(ctx, emp, hire, ctx["job_stf"].id,
-                                      event="Hire", reason="Rekrutmen"),
+                                      event="hire", reason="Rekrutmen reguler"),
                     headers=h)
     assert r.status_code == 201, r.text
     r = client.post("/api/v1/comp-info",
-                    json=_comp_payload(ctx, emp, hire, 8000000, event="Hire"),
+                    json=_comp_payload(ctx, emp, hire, 8000000, event="hire", reason="Penetapan gaji awal"),
                     headers=h)
     assert r.status_code == 201, r.text
 
@@ -83,7 +84,7 @@ def test_prd93_promosi_masa_depan(client, ctx):
     # ...tepat pada tanggal efektif menjadi Supervisor & gaji baru.
     job_nanti = _get_as_of(client, h, "job-info", emp, promo)
     assert job_nanti["job_id"] == str(ctx["job_mgr"].id)
-    assert job_nanti["event"] == "Promosi"
+    assert job_nanti["event"] == "promotion"
     comp_nanti = _get_as_of(client, h, "comp-info", emp, promo)
     assert comp_nanti["components"]["gaji_pokok"] == 11000000
 
@@ -92,7 +93,7 @@ def test_prd93_promosi_masa_depan(client, ctx):
                     params={"employment_id": str(emp)}, headers=h)
     assert tl.status_code == 200
     events = [x["event"] for x in tl.json()]
-    assert events[-2:] == ["Hire", "Promosi"]  # dua terakhir: hire uji + promosi
+    assert events[-2:] == ["hire", "promotion"]  # dua terakhir: hire uji + promosi
     assert tl.json()[-1]["event_reason"] == "Kenaikan jabatan reguler"
 
     # Audit mencatat promosi dengan nilai lama & baru.
@@ -102,7 +103,7 @@ def test_prd93_promosi_masa_depan(client, ctx):
     inserts = [l for l in logs.json()
                if l["action"] == "insert" and l["object_type"] == "job_info"]
     assert len(inserts) == 2
-    promo_log = next(l for l in inserts if l["new_values"]["event"] == "Promosi")
+    promo_log = next(l for l in inserts if l["new_values"]["event"] == "promotion")
     assert promo_log["reason"] == "Uji skenario PRD 9.3"
     assert promo_log["actor_user_id"]
     assert promo_log["channel"] == "api"

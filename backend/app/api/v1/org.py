@@ -218,6 +218,7 @@ def create_legal_entity(
             values={"name": body.name, "npwp": body.npwp},
             event=body.event, event_reason=body.event_reason,
             created_by=user.id,
+            event_applies_to="org",
         )
     except ValueError as e:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e))
@@ -254,6 +255,7 @@ def version_legal_entity(
             valid_from=body.valid_from, values=values,
             event=body.event, event_reason=body.event_reason,
             created_by=user.id,
+            event_applies_to="org",
         )
     except ValueError as e:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e))
@@ -328,6 +330,7 @@ def create_org_unit(
                     "legal_entity_id": body.legal_entity_id, "is_active": True},
             event=body.event, event_reason=body.event_reason,
             created_by=user.id,
+            event_applies_to="org",
         )
     except ValueError as e:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e))
@@ -388,6 +391,7 @@ def version_org_unit(
                     "is_active": new_active},
             event=body.event, event_reason=body.event_reason,
             created_by=user.id,
+            event_applies_to="org",
         )
     except ValueError as e:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e))
@@ -457,6 +461,7 @@ def create_location(
             values={"name": body.name, "timezone": body.timezone},
             event=body.event, event_reason=body.event_reason,
             created_by=user.id,
+            event_applies_to="org",
         )
     except ValueError as e:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e))
@@ -492,6 +497,7 @@ def version_location(
                                  else current.timezone)},
             event=body.event, event_reason=body.event_reason,
             created_by=user.id,
+            event_applies_to="org",
         )
     except ValueError as e:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e))
@@ -548,6 +554,7 @@ def create_cost_center(
                     "org_unit_id": body.org_unit_id, "is_active": True},
             event=body.event, event_reason=body.event_reason,
             created_by=user.id,
+            event_applies_to="org",
         )
     except ValueError as e:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e))
@@ -589,6 +596,7 @@ def version_cost_center(
                                   else current.is_active)},
             event=body.event, event_reason=body.event_reason,
             created_by=user.id,
+            event_applies_to="org",
         )
     except ValueError as e:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e))

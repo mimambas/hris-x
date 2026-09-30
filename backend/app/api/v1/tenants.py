@@ -11,6 +11,7 @@ from app.core.db import get_db
 from app.core.deps import get_current_user, require_superadmin
 from app.models import Tenant, User
 from app.schemas.schemas import TenantCreate, TenantOut
+from app.services import lifecycle
 from app.services.audit import write_audit
 
 router = APIRouter(tags=["tenants"])
@@ -45,6 +46,8 @@ def create_tenant(
     tenant = Tenant(name=body.name, slug=body.slug)
     db.add(tenant)
     db.flush()
+    # Sprint 3 (CHR-002): tenant baru langsung punya katalog event default.
+    lifecycle.seed_lifecycle_catalog(db, tenant.id, created_by_user_id=user.id)
     write_audit(
         db=db,
         tenant_id=tenant.id,

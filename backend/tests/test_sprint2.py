@@ -24,8 +24,8 @@ def _mk_unit(client, h, name, le_id, parent_id=None, valid_from=PAST):
             "parent_id": str(parent_id) if parent_id else None,
             "legal_entity_id": str(le_id),
             "valid_from": valid_from,
-            "event": "Pembentukan",
-            "event_reason": "test",
+            "event": "org_unit_created",
+            "event_reason": "Lainnya",
             "reason": "test",
         },
     )
@@ -36,8 +36,8 @@ def _mk_unit(client, h, name, le_id, parent_id=None, valid_from=PAST):
 def _version_unit(client, h, unit_id, valid_from, reason="test", **fields):
     body = {
         "valid_from": valid_from,
-        "event": "Reorganisasi",
-        "event_reason": "test",
+        "event": "org_restructure",
+        "event_reason": "Lainnya",
         "reason": reason,
         **fields,
     }
@@ -146,8 +146,8 @@ def test_org_rename_dan_timeline_legal_entity(client, ctx):
             "name": "PT Contoh",
             "npwp": "00",
             "valid_from": PAST,
-            "event": "Pendirian",
-            "event_reason": "test",
+            "event": "org_founded",
+            "event_reason": "Lainnya",
             "reason": "test",
         },
     )
@@ -159,8 +159,8 @@ def test_org_rename_dan_timeline_legal_entity(client, ctx):
         json={
             "name": "PT Contoh Tbk",
             "valid_from": FUTURE,
-            "event": "Rebranding",
-            "event_reason": "test",
+            "event": "org_renamed",
+            "event_reason": "Lainnya",
             "reason": "test",
         },
     )
@@ -183,8 +183,8 @@ def test_org_cost_center_crud_dan_timeline(client, ctx):
             "name": "Pusat Biaya Test",
             "org_unit_id": str(ou),
             "valid_from": PAST,
-            "event": "Pembentukan",
-            "event_reason": "test",
+            "event": "org_unit_created",
+            "event_reason": "Lainnya",
             "reason": "test",
         },
     )
@@ -196,8 +196,8 @@ def test_org_cost_center_crud_dan_timeline(client, ctx):
         json={
             "name": "Pusat Biaya Test Renamed",
             "valid_from": FUTURE,
-            "event": "Rename",
-            "event_reason": "test",
+            "event": "org_renamed",
+            "event_reason": "Lainnya",
             "reason": "test",
         },
     )
@@ -503,8 +503,8 @@ def _set_manager(client, h_admin, ctx):
             "org_unit_id": str(ctx["ou"].id),
             "location_id": str(ctx["loc_b"].id),
             "manager_employment_id": str(ctx["e_mgr"].id),
-            "event": "Penetapan atasan",
-            "event_reason": "test",
+            "event": "data_update",
+            "event_reason": "Lainnya",
             "reason": "test",
         },
     )

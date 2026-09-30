@@ -15,6 +15,7 @@ from app.core.deps import get_current_user, require_permission
 from app.models import Employment, JobInfo, User
 from app.schemas.schemas import JobInfoCreate, JobInfoCorrect, JobInfoOut
 from app.services import effective_dating as ed
+from app.services import lifecycle
 from app.services.audit import write_audit
 
 router = APIRouter(tags=["job-info"])
@@ -51,7 +52,7 @@ def insert_job_info(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    _get_employment_or_404(db, user, body.employment_id)
+    emp = _get_employment_or_404(db, user, body.employment_id)
     try:
         record = ed.insert_record(
             db=db,
@@ -69,9 +70,28 @@ def insert_job_info(
             event=body.event,
             event_reason=body.event_reason,
             created_by=user.id,
+            event_applies_to="lifecycle",
         )
     except ValueError as e:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e))
+
+    # CHR-004: event terakhir -> Employment.status (mis. termination menutup).
+    old_status = emp.status
+    new_status = lifecycle.derive_employment_status(db, emp)
+    if new_status is not None and new_status != old_status:
+        write_audit(
+            db=db,
+            tenant_id=user.tenant_id,
+            actor_user_id=user.id,
+            action="update",
+            object_type="employment",
+            object_id=emp.id,
+            old_values={"status": old_status},
+            new_values={"status": new_status, "end_date": emp.end_date.isoformat() if emp.end_date else None},
+            reason=f"Derivasi status dari event '{record.event}'",
+            channel="api",
+            ip=client_ip(request),
+        )
 
     retro_periods = (
         ed.detect_retro_impact(body.valid_from) if body.valid_from < date.today() else []
@@ -118,6 +138,7 @@ def correct_job_info(
             model=JobInfo,
             record_id=record_id,
             values=values,
+            event_applies_to="lifecycle",
         )
     except KeyError:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Record tidak ditemukan")
