@@ -27,8 +27,8 @@ from app.services.audit import write_audit
 router = APIRouter(tags=["master-data"])
 
 _PERSON_FIELDS = [
-    "id", "nik", "full_name", "birth_place", "birth_date", "email", "npwp",
-    "ptkp", "bpjs_kes_no", "bpjs_tk_no", "bank_name", "bank_account_no",
+    "id", "nik", "full_name", "birth_place", "birth_date", "email", "phone",
+    "npwp", "ptkp", "bpjs_kes_no", "bpjs_tk_no", "bank_name", "bank_account_no",
 ]
 _EMPLOYMENT_FIELDS = ["id", "person_id", "legal_entity_id", "start_date", "end_date", "status"]
 
@@ -84,6 +84,7 @@ def create_person(
         birth_place=body.birth_place,
         birth_date=body.birth_date,
         email=body.email,
+        phone=body.phone,
         npwp=body.npwp,
         ptkp=body.ptkp,
         bpjs_kes_no=body.bpjs_kes_no,
@@ -224,8 +225,8 @@ def update_person(
     # Terapkan hanya field yang dikirim eksplisit (boleh dikosongkan -> None).
     changes = {}
     for field in (
-        "nik", "full_name", "birth_place", "birth_date", "email", "npwp",
-        "bpjs_kes_no", "bpjs_tk_no", "bank_name", "bank_account_no",
+        "nik", "full_name", "birth_place", "birth_date", "email", "phone",
+        "npwp", "bpjs_kes_no", "bpjs_tk_no", "bank_name", "bank_account_no",
     ):
         if field not in body.model_fields_set:
             continue

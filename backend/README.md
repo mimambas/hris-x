@@ -234,6 +234,100 @@ curl -s -X POST localhost:8000/api/v1/overtime/requests \
 
 Detail keputusan & simplifikasi jujur: `docs/adr/0008-attendance-leave-overtime.md`.
 
+## Yang baru di Sprint 6 (PRD 24.2 S6: rekrutmen, pipeline, e-offer)
+
+- **Requisition**: `draft → submitted → approved/rejected`, approval
+  1 level oleh HR (`requisition/correct`). Publish lowongan ditolak 422
+  bila requisition belum approved.
+- **Lowongan**: `draft → published → closed`. `GET /api/v1/public/jobs?tenant=<slug>`
+  TANPA auth — hanya field publik (id, title, description, requirements,
+  employment_type, location, published_at).
+- **Kandidat & CV**: kandidat eksternal (bukan person); upload CV
+  multipart internal ke `backend/uploads/<tenant_id>/` (whitelist
+  ekstensi, maks 10 MB), path di `Candidate.cv_file_path`.
+- **Lamaran**: unik per (tenant, lowongan, kandidat) → duplikat 422;
+  hanya untuk lowongan published.
+- **Pipeline**: `applied → screening → interview → offering → hired`;
+  cabang `rejected/withdrawn` dari stage mana pun; `hired` hanya dari
+  `offering`. Transisi mundur wajib note. Setiap transisi tercatat di
+  audit (`action="move_stage"`) dengan actor + timestamp + note.
+- **Wawancara**: `scheduled → completed/cancelled`; satu feedback per
+  interviewer (skor 1–5, rekomendasi hire/no_hire/consider).
+- **E-offer**: `draft → sent → accepted/declined/expired` + PDF surat
+  penawaran (reportlab, tanpa e-sign). Terima via tautan publik
+  `POST /api/v1/public/offers/{token}/accept` TANPA auth — kedaluwarsa
+  otomatis jadi `expired` (422); accept menciptakan Person + Employment
+  + JobInfo (`event="hire"`, reason "Rekrutmen reguler"); lamaran → hired.
+- **RBP**: role baru `Recruiter` (grant penuh 6 objek, tanpa assignment di
+  seed); hiring manager (`view+correct` requisition & job_application)
+  dibatasi di kode hanya untuk unit kerjanya sendiri (ADR-0009).
+- **Demo end-to-end**: `../.venv/bin/python scripts/demo_recruitment_flow.py` —
+  requisition → approve → publish → Ayu Lestari melamar + CV →
+  screening → wawancara + feedback skor 4 → e-offer PDF → accept →
+  employment tercipta; jejak audit ke `demo/demo_recruitment_trail.json`.
+
+```bash
+# Requisition → approve → publish
+curl -s -X POST localhost:8000/api/v1/recruitment/requisitions \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"org_unit_id":"<uuid>","job_title":"UI/UX Designer","headcount":2,"reason":"Proyek baru"}'
+curl -s -X POST localhost:8000/api/v1/recruitment/requisitions/<uuid>/submit \
+  -H "Authorization: Bearer $TOKEN"
+curl -s -X POST localhost:8000/api/v1/recruitment/requisitions/<uuid>/approve \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"note":"Disetujui"}'
+curl -s -X POST localhost:8000/api/v1/recruitment/postings \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"requisition_id":"<uuid>","title":"UI/UX Designer","employment_type":"tetap","location":"Jakarta"}'
+curl -s -X POST localhost:8000/api/v1/recruitment/postings/<uuid>/publish \
+  -H "Authorization: Bearer $TOKEN"
+
+# Publik: daftar lowongan (tanpa token)
+curl -s "localhost:8000/api/v1/public/jobs?tenant=hashiru"
+
+# Kandidat + CV + lamaran
+curl -s -X POST localhost:8000/api/v1/recruitment/candidates \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"name":"Ayu Lestari","email":"ayu@example.id","phone":"081234567890","source":"website"}'
+curl -s -X POST localhost:8000/api/v1/recruitment/candidates/<uuid>/cv \
+  -H "Authorization: Bearer $TOKEN" -F "file=@cv.pdf"
+curl -s -X POST localhost:8000/api/v1/recruitment/applications \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"posting_id":"<uuid>","candidate_id":"<uuid>"}'
+
+# Pipeline: screening → interview → offering
+curl -s -X POST localhost:8000/api/v1/recruitment/applications/<uuid>/move \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"to_stage":"screening","note":"CV cocok"}'
+
+# Wawancara + feedback
+curl -s -X POST localhost:8000/api/v1/recruitment/interviews \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"application_id":"<uuid>","scheduled_at":"2026-10-05T10:00:00+07:00",
+       "interviewer_ids":["<user-uuid>"],"mode":"onsite","location":"Jakarta"}'
+curl -s -X POST localhost:8000/api/v1/recruitment/interviews/<uuid>/feedback \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"interviewer_id":"<user-uuid>","score":4,"recommendation":"hire","notes":"Bagus"}'
+
+# Offer → kirim → PDF → accept publik
+curl -s -X POST localhost:8000/api/v1/recruitment/offers \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"application_id":"<uuid>","salary":9000000,"start_date":"2026-11-01",
+       "contract_type":"PKWTT","expires_at":"2026-10-15T17:00:00+07:00",
+       "job_id":"<uuid>","org_unit_id":"<uuid>","location_id":"<uuid>","legal_entity_id":"<uuid>"}'
+curl -s -X POST localhost:8000/api/v1/recruitment/offers/<uuid>/send \
+  -H "Authorization: Bearer $TOKEN"
+curl -s -o offer.pdf localhost:8000/api/v1/recruitment/offers/<uuid>/pdf \
+  -H "Authorization: Bearer $TOKEN"
+curl -s -X POST localhost:8000/api/v1/public/offers/<token>/accept \
+  -H 'Content-Type: application/json' \
+  -d '{"nik":"3174050101900001","full_name":"Ayu Lestari","birth_place":"Bandung",
+       "birth_date":"1998-05-20","email":"ayu@example.id","phone":"081234567890",
+       "bank_name":"BCA","bank_account_no":"1234567890"}'
+```
+
+Detail keputusan & simplifikasi jujur: `docs/adr/0009-recruitment.md`.
+
 ## Yang baru di Sprint 3 (PRD 4: CHR-003 s.d. CHR-012)
 
 - **Katalog lifecycle** (CHR-003/004): event & alasan tersimpan sebagai
@@ -304,8 +398,8 @@ Detail keputusan & simplifikasi jujur: `docs/adr/0008-attendance-leave-overtime.
 - Rantai hash audit (PLT-051), audit akses baca field sensitif (PLT-052)
 - Notifikasi, SSO/OIDC, aplikasi mobile/ESS native
   (API siap `source=mobile`; tanpa GPS/geofence/face-match/offline)
-- Modul: rekrutmen, dst. (Sprint 6+; absensi/cuti/lembur selesai di Sprint 5,
-  payroll di Sprint 4)
+- Modul: rekrutmen selesai di Sprint 6 (tanpa AI CV parsing, talent pool,
+  integrasi job portal, e-sign — lihat ADR-0009)
 
 ## Penyederhanaan vs PRD (jujur)
 

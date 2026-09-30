@@ -1,0 +1,102 @@
+{
+  "alur": [
+    {
+      "aktor": "Administrator (HR)",
+      "aksi": "buat requisition",
+      "jabatan": "UI/UX Designer",
+      "status": "draft"
+    },
+    {
+      "aktor": "Administrator (HR)",
+      "aksi": "approve requisition",
+      "status": "approved"
+    },
+    {
+      "aktor": "Administrator (HR)",
+      "aksi": "publish lowongan",
+      "judul": "UI/UX Designer",
+      "status": "published"
+    },
+    {
+      "aktor": "Publik (tanpa login)",
+      "aksi": "lihat daftar lowongan",
+      "jumlah_published": 1
+    },
+    {
+      "aktor": "Ayu Lestari (kandidat)",
+      "aksi": "kirim CV",
+      "cv_tersimpan": true
+    },
+    {
+      "aktor": "Administrator (HR)",
+      "aksi": "pipeline applied→screening→interview",
+      "status": "interview"
+    },
+    {
+      "aktor": "Dewi Lestari (interviewer)",
+      "aksi": "feedback wawancara",
+      "skor": 4,
+      "rekomendasi": "hire"
+    },
+    {
+      "aktor": "Administrator (HR)",
+      "aksi": "kirim e-offer",
+      "gaji": "Rp9.000.000",
+      "pdf_bytes": 2650,
+      "token_terbit": true
+    },
+    {
+      "aktor": "Ayu Lestari (kandidat)",
+      "aksi": "accept offer via tautan publik",
+      "nik": "3174050101900001"
+    }
+  ],
+  "employment": {
+    "employment_id": "01a0f23a-eab4-7091-85cc-f75a45bb4825",
+    "start_date": "2026-11-01",
+    "status": "active",
+    "job_info_event": "hire"
+  },
+  "audit": [
+    {
+      "aksi": "move_stage",
+      "status_lama": "offering",
+      "status_baru": "hired",
+      "waktu": "2026-09-30T12:12:22",
+      "channel": "public",
+      "alasan": "Offer diterima kandidat"
+    },
+    {
+      "aksi": "move_stage",
+      "status_lama": "interview",
+      "status_baru": "offering",
+      "waktu": "2026-09-30T12:12:22",
+      "channel": "api",
+      "alasan": "Siap offering"
+    },
+    {
+      "aksi": "move_stage",
+      "status_lama": "screening",
+      "status_baru": "interview",
+      "waktu": "2026-09-30T12:12:22",
+      "channel": "api",
+      "alasan": "Lanjut wawancara"
+    },
+    {
+      "aksi": "move_stage",
+      "status_lama": "applied",
+      "status_baru": "screening",
+      "waktu": "2026-09-30T12:12:22",
+      "channel": "api",
+      "alasan": "CV cocok"
+    },
+    {
+      "aksi": "create",
+      "status_lama": null,
+      "status_baru": "applied",
+      "waktu": "2026-09-30T12:12:22",
+      "channel": "api",
+      "alasan": "Lamaran baru"
+    }
+  ]
+}

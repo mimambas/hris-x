@@ -21,6 +21,7 @@ from app.api.v1 import (
     payroll,
     persons,
     rbac,
+    recruitment,
     tenants,
 )
 
@@ -42,3 +43,4 @@ api_router.include_router(payroll.router)
 api_router.include_router(attendance.router)
 api_router.include_router(leave.router)
 api_router.include_router(overtime.router)
+api_router.include_router(recruitment.router)

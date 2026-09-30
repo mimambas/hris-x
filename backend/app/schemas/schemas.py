@@ -66,6 +66,7 @@ class PersonCreate(BaseModel):
     birth_place: str | None = Field(default=None, max_length=120)
     birth_date: date | None = None
     email: str | None = None
+    phone: str | None = Field(default=None, max_length=30)
     npwp: str | None = None
     ptkp: str = "TK/0"
     bpjs_kes_no: str | None = None
@@ -127,6 +128,7 @@ class PersonUpdate(BaseModel):
     birth_place: str | None = Field(default=None, max_length=120)
     birth_date: date | None = None
     email: str | None = None
+    phone: str | None = Field(default=None, max_length=30)
     npwp: str | None = None
     bpjs_kes_no: str | None = None
     bpjs_tk_no: str | None = None
@@ -192,6 +194,7 @@ class PersonOut(BaseModel):
     birth_place: str | None
     birth_date: date | None
     email: str | None
+    phone: str | None
     npwp: str | None
     ptkp: str
     bpjs_kes_no: str | None
@@ -1051,3 +1054,244 @@ class OvertimeRequestOut(BaseModel):
     status: str
     pay_amount: int
     rejection_reason: str | None
+
+
+# ------------------------------------------------------------------ Rekrutmen (Sprint 6)
+REQUISITION_STATUSES = ("draft", "submitted", "approved", "rejected")
+POSTING_STATUSES = ("draft", "published", "closed")
+APPLICATION_STAGES = ("applied", "screening", "interview", "offering", "hired",
+                      "rejected", "withdrawn")
+INTERVIEW_MODES = ("onsite", "online")
+INTERVIEW_STATUSES = ("scheduled", "completed", "cancelled")
+RECOMMENDATIONS = ("hire", "no_hire", "consider")
+OFFER_STATUSES = ("draft", "sent", "accepted", "declined", "expired")
+CANDIDATE_SOURCES = ("website", "referral", "job_portal")
+
+
+class RequisitionCreate(BaseModel):
+    org_unit_id: uuid.UUID
+    job_title: str = Field(min_length=1, max_length=200)
+    headcount: int = Field(default=1, ge=1)
+    reason: str | None = Field(default=None, max_length=2000)
+
+
+class RequisitionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    org_unit_id: uuid.UUID
+    job_title: str
+    headcount: int
+    reason: str | None
+    status: str
+
+
+class RequisitionDecision(BaseModel):
+    note: str | None = Field(default=None, max_length=500)
+
+
+class JobPostingCreate(BaseModel):
+    requisition_id: uuid.UUID
+    title: str = Field(min_length=1, max_length=200)
+    description: str | None = None
+    requirements: str | None = None
+    employment_type: str = Field(default="tetap", max_length=50)
+    location: str | None = Field(default=None, max_length=200)
+
+
+class JobPostingOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    requisition_id: uuid.UUID
+    title: str
+    description: str | None
+    requirements: str | None
+    employment_type: str
+    location: str | None
+    status: str
+    published_at: datetime | None
+    closed_at: datetime | None
+
+
+class PublicJobOut(BaseModel):
+    """Field publik lowongan (tanpa auth): tanpa id internal relasi."""
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    title: str
+    description: str | None
+    requirements: str | None
+    employment_type: str
+    location: str | None
+    published_at: datetime | None
+
+
+class CandidateCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    email: EmailStr
+    phone: str | None = Field(default=None, max_length=30)
+    source: str = Field(default="website", max_length=20)
+
+    @field_validator("source")
+    @classmethod
+    def _source_valid(cls, v: str) -> str:
+        if v not in CANDIDATE_SOURCES:
+            raise ValueError(f"source harus salah satu: {', '.join(CANDIDATE_SOURCES)}")
+        return v
+
+    @field_validator("email")
+    @classmethod
+    def _email_lower(cls, v: EmailStr) -> str:
+        return str(v).strip().lower()
+
+
+class CandidateOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    name: str
+    email: str
+    phone: str | None
+    cv_file_path: str | None
+    source: str
+
+
+class ApplicationCreate(BaseModel):
+    posting_id: uuid.UUID
+    candidate_id: uuid.UUID
+
+
+class ApplicationOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    posting_id: uuid.UUID
+    candidate_id: uuid.UUID
+    status: str
+    applied_at: datetime
+
+
+class ApplicationMove(BaseModel):
+    to_stage: str = Field(min_length=1, max_length=20)
+    note: str | None = Field(default=None, max_length=500)
+
+    @field_validator("to_stage")
+    @classmethod
+    def _stage_valid(cls, v: str) -> str:
+        if v not in APPLICATION_STAGES:
+            raise ValueError(f"to_stage harus salah satu: {', '.join(APPLICATION_STAGES)}")
+        return v
+
+
+class InterviewCreate(BaseModel):
+    application_id: uuid.UUID
+    scheduled_at: datetime
+    interviewer_ids: list[uuid.UUID] = Field(min_length=1)
+    location: str | None = Field(default=None, max_length=200)
+    mode: str = Field(default="onsite", max_length=20)
+
+    @field_validator("mode")
+    @classmethod
+    def _mode_valid(cls, v: str) -> str:
+        if v not in INTERVIEW_MODES:
+            raise ValueError(f"mode harus salah satu: {', '.join(INTERVIEW_MODES)}")
+        return v
+
+
+class InterviewOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    application_id: uuid.UUID
+    scheduled_at: datetime
+    interviewer_ids: list
+    location: str | None
+    mode: str
+    status: str
+
+
+class FeedbackCreate(BaseModel):
+    interviewer_id: uuid.UUID
+    score: int = Field(ge=1, le=5)
+    notes: str | None = Field(default=None, max_length=2000)
+    recommendation: str = Field(min_length=1, max_length=20)
+
+    @field_validator("recommendation")
+    @classmethod
+    def _rec_valid(cls, v: str) -> str:
+        if v not in RECOMMENDATIONS:
+            raise ValueError(f"recommendation harus salah satu: {', '.join(RECOMMENDATIONS)}")
+        return v
+
+
+class FeedbackOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    interview_id: uuid.UUID
+    interviewer_id: uuid.UUID
+    score: int
+    notes: str | None
+    recommendation: str
+
+
+class OfferCreate(BaseModel):
+    application_id: uuid.UUID
+    salary: int = Field(gt=0)
+    start_date: date
+    contract_type: str = Field(min_length=1, max_length=50)
+    expires_at: datetime
+    job_id: uuid.UUID
+    org_unit_id: uuid.UUID
+    location_id: uuid.UUID
+    legal_entity_id: uuid.UUID
+
+
+class OfferOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    application_id: uuid.UUID
+    salary: int
+    start_date: date
+    contract_type: str
+    expires_at: datetime
+    status: str
+    offer_token: str | None
+
+
+class OfferDecline(BaseModel):
+    note: str | None = Field(default=None, max_length=500)
+
+
+class AcceptOfferCreate(BaseModel):
+    nik: str = Field(min_length=16, max_length=16, pattern=r"^\d{16}$")
+    full_name: str = Field(min_length=1, max_length=200)
+    birth_place: str | None = Field(default=None, max_length=120)
+    birth_date: date | None = None
+    email: str | None = None
+    phone: str | None = Field(default=None, max_length=30)
+    bank_name: str | None = Field(default=None, max_length=100)
+    bank_account_no: str | None = None
+
+    @field_validator("nik")
+    @classmethod
+    def _nik_valid(cls, v: str) -> str:
+        return validate_nik(v)
+
+    @field_validator("email")
+    @classmethod
+    def _email_valid(cls, v: str | None) -> str | None:
+        return validate_email(v)
+
+    @field_validator("bank_account_no")
+    @classmethod
+    def _bank_acc_valid(cls, v: str | None) -> str | None:
+        return validate_bank_account(v)
+
+    @field_validator("birth_date")
+    @classmethod
+    def _birth_date_valid(cls, v: date | None) -> date | None:
+        return validate_birth_date(v)
+
+
+class AcceptOfferOut(BaseModel):
+    person_id: uuid.UUID
+    employment_id: uuid.UUID
+    job_info_id: uuid.UUID
+    nik: str
+    full_name: str
+    start_date: date

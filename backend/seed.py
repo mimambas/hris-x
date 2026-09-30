@@ -434,6 +434,22 @@ def main() -> None:
         for obj in ("attendance", "leave_request", "overtime_request"):
             grant(role_emp, obj, can_view=True, can_insert=True)
         grant(role_emp, "leave_type", can_view=True)
+        # Sprint 6: role Recruiter — grant penuh 6 objek rekrutmen.
+        # Sengaja tanpa assignment (seperti HR Admin); assignment via API.
+        role_rec = PermissionRole(
+            tenant_id=tenant.id, name="Recruiter",
+            description="Rekrutmen end-to-end")
+        db.add(role_rec)
+        db.flush()
+        for obj in ("requisition", "job_posting", "candidate",
+                    "job_application", "interview", "offer"):
+            grant(role_rec, obj,
+                  can_view=True, can_view_history=True, can_insert=True,
+                  can_correct=True, can_delete=True)
+        # Sprint 6: hiring manager — lihat + kelola requisition & lamaran.
+        # Scope unit kerja sendiri ditegakkan di kode (ADR-0009).
+        grant(role_mgr, "requisition", can_view=True, can_correct=True)
+        grant(role_mgr, "job_application", can_view=True, can_correct=True)
         db.flush()
 
         # ---- User tambahan terikat ke Person ----

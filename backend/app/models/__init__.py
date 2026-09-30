@@ -73,6 +73,7 @@ class Person(Base):
     birth_place: Mapped[str | None] = mapped_column(String(120), nullable=True)
     birth_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(30), nullable=True)  # Sprint 6: dari offer accept
     npwp: Mapped[str | None] = mapped_column(String(16), nullable=True)  # format baru 16 digit
     ptkp: Mapped[str] = mapped_column(String(4), nullable=False, default="TK/0")
     bpjs_kes_no: Mapped[str | None] = mapped_column(String(20), nullable=True)
@@ -1286,4 +1287,230 @@ class OvertimeRequest(Base):
 
     __table_args__ = (
         Index("ix_overtimereq_emp_date", "employment_id", "date"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Rekrutmen (Sprint 6)
+# ---------------------------------------------------------------------------
+class JobRequisition(Base):
+    """Kebutuhan rekrutmen: draft → submitted → approved/rejected.
+
+    Approval 1 level oleh HR (izin requisition/correct). Hiring manager
+    (izin view+correct tanpa insert) hanya boleh mengelola requisition
+    yang org_unit_id-nya = unit kerjanya sendiri (batas di kode, ADR-0009).
+    """
+
+    __tablename__ = "job_requisitions"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    org_unit_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("org_units.id"), nullable=False, index=True
+    )
+    job_title: Mapped[str] = mapped_column(String(200), nullable=False)
+    headcount: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False,
+                                        default="draft")  # draft/submitted/approved/rejected
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True
+    )
+    decided_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True
+    )
+    decided_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    decision_note: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class JobPosting(Base):
+    """Lowongan: draft → published → closed. Publish hanya bila requisition
+    sudah approved (dicek di API)."""
+
+    __tablename__ = "job_postings"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    requisition_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("job_requisitions.id"), nullable=False, index=True
+    )
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    requirements: Mapped[str | None] = mapped_column(Text, nullable=True)
+    employment_type: Mapped[str] = mapped_column(String(50), nullable=False,
+                                                default="tetap")
+    location: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False,
+                                        default="draft")  # draft/published/closed
+    published_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    closed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class Candidate(Base):
+    """Kandidat eksternal (bukan person). Email unik per tenant."""
+
+    __tablename__ = "candidates"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    email: Mapped[str] = mapped_column(String(255), nullable=False)  # lowercase
+    phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    cv_file_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    source: Mapped[str] = mapped_column(String(20), nullable=False,
+                                        default="website")  # website/referral/job_portal
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "email", name="uq_candidate_tenant_email"),
+    )
+
+
+class JobApplication(Base):
+    """Lamaran: applied → screening → interview → offering → hired;
+    cabang rejected/withdrawn dari stage mana pun (bukan final)."""
+
+    __tablename__ = "job_applications"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    posting_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("job_postings.id"), nullable=False, index=True
+    )
+    candidate_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("candidates.id"), nullable=False, index=True
+    )
+    status: Mapped[str] = mapped_column(String(20), nullable=False,
+                                        default="applied")
+    applied_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "posting_id", "candidate_id",
+                         name="uq_app_posting_candidate"),
+    )
+
+
+class Interview(Base):
+    """Jadwal wawancara satu lamaran; bisa lebih dari satu."""
+
+    __tablename__ = "interviews"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    application_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("job_applications.id"), nullable=False, index=True
+    )
+    scheduled_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    interviewer_ids: Mapped[list] = mapped_column(JSON, nullable=False,
+                                                  default=list)
+    location: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    mode: Mapped[str] = mapped_column(String(20), nullable=False,
+                                      default="onsite")  # onsite/online
+    status: Mapped[str] = mapped_column(String(20), nullable=False,
+                                        default="scheduled")  # scheduled/completed/cancelled
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class InterviewFeedback(Base):
+    """Penilaian satu interviewer atas satu wawancara (1 baris/interviewer)."""
+
+    __tablename__ = "interview_feedbacks"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    interview_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("interviews.id"), nullable=False, index=True
+    )
+    interviewer_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=False
+    )
+    score: Mapped[int] = mapped_column(Integer, nullable=False)  # 1..5
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    recommendation: Mapped[str] = mapped_column(
+        String(20), nullable=False)  # hire/no_hire/consider
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint("interview_id", "interviewer_id",
+                         name="uq_feedback_interview_interviewer"),
+    )
+
+
+class Offer(Base):
+    """Penawaran kerja (e-offer): draft → sent → accepted/declined/expired.
+
+    Accept publik via offer_token acak (tanpa auth). Saat accept: Person +
+    Employment dibuat, JobInfo di-insert dengan event 'hire'."""
+
+    __tablename__ = "offers"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    application_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("job_applications.id"), nullable=False, index=True
+    )
+    salary: Mapped[int] = mapped_column(Integer, nullable=False)  # rupiah
+    start_date: Mapped[date] = mapped_column(Date, nullable=False)
+    contract_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    # Data kepegawaian untuk pembuatan Employment+JobInfo saat accept.
+    job_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("jobs.id"), nullable=False
+    )
+    org_unit_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("org_units.id"), nullable=False
+    )
+    location_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("locations.id"), nullable=False
+    )
+    legal_entity_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("legal_entities.id"), nullable=False
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    offer_token: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, unique=True, index=True
+    )
+    status: Mapped[str] = mapped_column(String(20), nullable=False,
+                                        default="draft")
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True
+    )
+    sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    decided_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint("application_id", name="uq_offer_application"),
     )

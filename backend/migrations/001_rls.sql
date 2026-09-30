@@ -59,7 +59,10 @@ BEGIN
             'shifts', 'shift_assignments', 'holidays', 'attendance_records',
             'leave_types', 'leave_balances', 'leave_requests',
             'tenant_leave_policies', 'tenant_attendance_policies',
-            'overtime_rates', 'overtime_requests'
+            'overtime_rates', 'overtime_requests',
+            'job_requisitions', 'job_postings', 'candidates',
+            'job_applications', 'interviews', 'interview_feedbacks',
+            'offers'
           )
     LOOP
         -- Isolasi tenant: baris hanya terlihat bila tenant_id cocok.
