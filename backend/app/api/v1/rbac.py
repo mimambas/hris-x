@@ -11,10 +11,12 @@ from sqlalchemy.orm import Session
 from app.api.v1.common import client_ip, snapshot
 from app.core.db import get_db
 from app.core.deps import get_current_user, require_permission
+from app.core.security import hash_password, validate_password_policy
 from app.models import (
     FieldPermission,
     PermissionGroup,
     PermissionRole,
+    Person,
     RoleAssignment,
     User,
 )
@@ -26,6 +28,8 @@ from app.schemas.schemas import (
     GroupOut,
     RoleCreate,
     RoleOut,
+    UserCreate,
+    UserOut,
 )
 from app.services.audit import write_audit
 
@@ -97,6 +101,67 @@ def list_roles(user: User = Depends(get_current_user), db: Session = Depends(get
         .scalars()
         .all()
     )
+
+
+@router.post(
+    "/users",
+    response_model=UserOut,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_permission("rbac", "insert"))],
+)
+def create_user(
+    body: UserCreate,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Buat user login baru di tenant sendiri (Sprint 10).
+
+    - Kebijakan password ditegakkan -> 422 bila lemah.
+    - extra="forbid" di skema: field tak dikenal (mis. is_superadmin)
+      ditolak 422 (anti mass assignment).
+    - is_superadmin selalu False: user superadmin hanya dibuat via seed/
+      operasi database langsung.
+    """
+    email = body.email.strip().lower()
+    exists = (
+        db.execute(
+            select(User).where(
+                User.tenant_id == user.tenant_id, User.email == email
+            )
+        )
+        .scalars()
+        .first()
+    )
+    if exists:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Email sudah dipakai")
+    violations = validate_password_policy(body.password)
+    if violations:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Password tidak memenuhi kebijakan: " + " ".join(violations),
+        )
+    person = None
+    if body.person_id is not None:
+        person = db.get(Person, body.person_id)
+        if person is None or person.tenant_id != user.tenant_id:
+            raise HTTPException(status.HTTP_404_NOT_FOUND,
+                                "Person tidak ditemukan")
+    new_user = User(
+        tenant_id=user.tenant_id,
+        email=email,
+        full_name=body.full_name.strip(),
+        password_hash=hash_password(body.password),
+        person_id=person.id if person else None,
+        is_superadmin=False,
+    )
+    db.add(new_user)
+    db.flush()
+    _audit(db, user, request, "create", "user", new_user.id,
+           snapshot(new_user, ["id", "email", "full_name", "person_id"]),
+           body.reason)
+    db.commit()
+    return new_user
 
 
 @router.post(

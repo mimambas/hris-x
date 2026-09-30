@@ -1,7 +1,10 @@
-# HRIS-X Backend — Fondasi Sprint 1 + Platform Sprint 2
+# HRIS-X Backend — Fondasi Sprint 1 s.d. Go-Live Sprint 10
 
-Fondasi platform HRIS-X sesuai PRD v1.0 (HRIS-X), Sprint S1:
-**Tenant, auth, RBP dasar, audit, layanan effective dating.**
+Fondasi platform HRIS-X sesuai PRD v1.0 (HRIS-X), Sprint S1–S10:
+**Tenant, auth, RBP dasar, audit, layanan effective dating** (S1),
+modul HR lengkap (S2–S9: org, kontrak, impor, payroll, absensi/cuti/lembur,
+rekrutmen, performance 9-box, klaim & pinjaman, dasbor/laporan),
+**hardening keamanan & go-live** (S10).
 Hasil demo S1: *login multi-tenant; setiap perubahan tercatat dengan riwayat.*
 
 > Codebase ini BARU dan terpisah dari prototipe live di `~/workspace/hris/`.
@@ -54,7 +57,43 @@ DATABASE_URL="sqlite:///./hrisx.db" ../.venv/bin/uvicorn app.main:app --reload -
 ```
 
 Variabel env: `DATABASE_URL` (default `sqlite:///./hrisx.db`),
-`SECRET_KEY` (**wajib diganti di produksi**), `JWT_EXPIRE_MINUTES` (default 480).
+`SECRET_KEY` (**wajib diganti di produksi** — start ditolak bila
+`ENV=production` dan masih default), `ENV`
+(`development`/`staging`/`production`), `ALLOWED_ORIGINS` (koma-dipisah;
+default kosong = tanpa CORS), `JWT_EXPIRE_MINUTES` (default 480).
+
+## Yang baru di Sprint 10 (go-live & hardening keamanan)
+
+- **Rate limiting login**: maks 5 kegagalan/menit per (IP + email) →
+  429 + `Retry-After`; sukses me-reset counter. In-memory per-instance
+  (tanpa dependensi baru); Redis untuk multi-instance = F2.
+- **Kebijakan password**: min 12 karakter + huruf besar/kecil/angka/simbol.
+  `hash_password()` menolak password lemah (defense in depth); endpoint baru
+  `POST /api/v1/users` (buat user, izin `rbac` insert, `extra="forbid"` →
+  mass assignment `is_superadmin:true` ditolak 422) dan
+  `POST /api/v1/auth/change-password` mengembalikan 422 dengan pesan jelas.
+  Seed & test lama aman (`Password123!` lolos).
+- **Security headers**: `X-Content-Type-Options: nosniff`,
+  `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`,
+  HSTS bila request HTTPS.
+- **Startup check**: `ENV=production` + `SECRET_KEY` default → `RuntimeError`
+  (fail-closed).
+- **CORS**: hanya aktif bila `ALLOWED_ORIGINS` diisi; default tanpa CORS.
+- **Audit sweep**: 26 router / 112 endpoint mutasi dipindai — 0 celah
+  (dry-run impor sengaja tanpa audit: 0 tulis DB).
+- **Pentest mandiri** `scripts/pentest_basic.py`: 12/12 PASS
+  (isolasi tenant 404, 401 tanpa/kedaluwarsa token, SQLi tidak 500/bypass,
+  mass assignment 422, rate limit 429, RBP 403) → `demo/pentest_report.json`.
+- **Migrasi final** `scripts/migrate_final.py`: DB SQLite fresh → seed →
+  dry-run → commit `karyawan_500.xlsx` → 500/500 terimpor, NIK duplikat 0
+  → `demo/migration_report.json`.
+- **Dokumen**: `docs/GO_LIVE_CHECKLIST.md` (15/17 DONE; 2 known limitation
+  jujur: RLS live & backup terjadwal), `docs/DEPLOYMENT.md` (Docker generik,
+  tanpa klaim provider free-tier), ADR-0013.
+
+> Catatan diskrepansi PRD §24.2: baris S10 tertulis "Payroll cockpit, slip
+> gaji, file bank" — itu sudah dibangun di Sprint 4 (lihat ADR-0007).
+> Scope Sprint 10 yang berlaku adalah go-live & hardening (ADR-0013).
 
 ## Contoh pakai
 

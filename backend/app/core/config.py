@@ -9,8 +9,26 @@ def get_database_url() -> str:
     return os.environ.get("DATABASE_URL", "sqlite:///./hrisx.db")
 
 
+# Sprint 10: SECRET_KEY default yang ditolak saat ENV=production.
+DEFAULT_SECRET_KEY = "dev-only-secret-key-ganti-di-produksi"
+
+
 def get_secret_key() -> str:
-    return os.environ.get("SECRET_KEY", "dev-only-secret-key-ganti-di-produksi")
+    return os.environ.get("SECRET_KEY", DEFAULT_SECRET_KEY)
+
+
+def get_env() -> str:
+    """Lingkungan berjalan: development | staging | production."""
+    return os.environ.get("ENV", "development").strip().lower()
+
+
+def get_allowed_origins() -> list[str]:
+    """Daftar origin CORS dari env ALLOWED_ORIGINS (koma-dipisah).
+
+    Default kosong = TIDAK ADA CORS (same-origin saja). Lihat ADR-0013.
+    """
+    raw = os.environ.get("ALLOWED_ORIGINS", "")
+    return [o.strip() for o in raw.split(",") if o.strip()]
 
 
 JWT_ALGORITHM = "HS256"

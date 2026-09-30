@@ -1,0 +1,24 @@
+{
+  "tanggal": "2026-09-30T14:14:20.409078+00:00",
+  "database": "SQLite fresh (/tmp) — rehearsal migrasi; produksi = Postgres",
+  "file": "sample_data/karyawan_500.xlsx",
+  "dry_run": {
+    "total_baris": 500,
+    "valid": 500,
+    "invalid": 0
+  },
+  "commit": {
+    "imported": 500
+  },
+  "kualitas": {
+    "total_person_tenant": 505,
+    "nik_duplikat": 0,
+    "nik_duplikat_detail": [],
+    "email_kosong": 5,
+    "nik_invalid": 0
+  },
+  "verifikasi": {
+    "tepat_500_terimpor": true,
+    "nik_duplikat_nol": true
+  }
+}

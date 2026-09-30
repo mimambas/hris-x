@@ -46,6 +46,38 @@ class MeResponse(BaseModel):
     roles: list[str]
 
 
+class ChangePasswordRequest(BaseModel):
+    """Ganti password mandiri. Kebijakan password dicek di endpoint (422)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    old_password: str = Field(min_length=1)
+    new_password: str = Field(min_length=1, max_length=200)
+
+
+class UserCreate(BaseModel):
+    """Buat user baru (Sprint 10). extra=forbid: field tak dikenal
+    (mis. is_superadmin) ditolak 422 — anti mass assignment."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    email: EmailStr
+    full_name: str = Field(min_length=1, max_length=200)
+    password: str = Field(min_length=1, max_length=200)
+    person_id: uuid.UUID | None = None
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class UserOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    email: str
+    full_name: str
+    person_id: uuid.UUID | None
+    is_superadmin: bool
+
+
 # ------------------------------------------------------------------ Tenant
 class TenantCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
