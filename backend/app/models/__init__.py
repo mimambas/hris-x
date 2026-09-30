@@ -1514,3 +1514,171 @@ class Offer(Base):
     __table_args__ = (
         UniqueConstraint("application_id", name="uq_offer_application"),
     )
+
+
+# ---------------------------------------------------------------------------
+# Sprint 7 (PRD 24.2 S7): penilaian kinerja & pelatihan
+# ---------------------------------------------------------------------------
+class ReviewCycle(Base):
+    """Siklus penilaian kinerja: draft → goal_setting → mid_year →
+    year_end → calibration → closed."""
+
+    __tablename__ = "review_cycles"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    year: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False,
+                                        default="draft")  # draft/goal_setting/mid_year/year_end/calibration/closed
+    start_date: Mapped[date] = mapped_column(Date, nullable=False)
+    end_date: Mapped[date] = mapped_column(Date, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class PerformanceGoal(Base):
+    """Goal kinerja karyawan per siklus; bobot dalam persen."""
+
+    __tablename__ = "performance_goals"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    employment_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("employments.id"), nullable=False, index=True
+    )
+    cycle_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("review_cycles.id"), nullable=False, index=True
+    )
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    weight: Mapped[int] = mapped_column(Integer, nullable=False)  # persen
+    target_text: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False,
+                                        default="draft")  # draft/submitted/approved/rejected
+    manager_comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        Index("ix_goals_tenant_cycle_emp", "tenant_id", "cycle_id",
+              "employment_id"),
+    )
+
+
+class Appraisal(Base):
+    """Penilaian satu karyawan dalam satu siklus: self → manager →
+    kalibrasi (potential) → final_score."""
+
+    __tablename__ = "appraisals"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    employment_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("employments.id"), nullable=False, index=True
+    )
+    cycle_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("review_cycles.id"), nullable=False, index=True
+    )
+    # [{"goal_id": "<uuid>", "score": 1..5, "comment": "..."}]
+    self_scores: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    self_submitted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # [{"goal_id": "<uuid>", "score": 1..5}]
+    manager_scores: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    manager_submitted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    potential_score: Mapped[int | None] = mapped_column(
+        Integer, nullable=True)  # 1..5, diisi saat kalibrasi
+    final_score: Mapped[float | None] = mapped_column(
+        Numeric(4, 2), nullable=True)  # Σ(weight × manager_score)/100
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "employment_id", "cycle_id",
+                         name="uq_appraisal_tenant_emp_cycle"),
+    )
+
+
+class TenantPerformancePolicy(Base):
+    """Ambang batas kategori performance/potential per tenant untuk
+    matriks 9-box."""
+
+    __tablename__ = "tenant_performance_policies"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    perf_low_max: Mapped[float] = mapped_column(Numeric(4, 2), nullable=False,
+                                               default=2.5)
+    perf_med_max: Mapped[float] = mapped_column(Numeric(4, 2), nullable=False,
+                                               default=3.75)
+    pot_low_max: Mapped[float] = mapped_column(Numeric(4, 2), nullable=False,
+                                              default=2.5)
+    pot_med_max: Mapped[float] = mapped_column(Numeric(4, 2), nullable=False,
+                                              default=3.5)
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", name="uq_perf_policy_tenant"),
+    )
+
+
+class TrainingCourse(Base):
+    """Katalog kursus/pelatihan."""
+
+    __tablename__ = "training_courses"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    code: Mapped[str] = mapped_column(String(50), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    provider: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    duration_hours: Mapped[int] = mapped_column(Integer, nullable=False,
+                                               default=0)
+    cost: Mapped[int] = mapped_column(Integer, nullable=False,
+                                      default=0)  # rupiah
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "code", name="uq_course_tenant_code"),
+    )
+
+
+class TrainingEnrollment(Base):
+    """Pendaftaran karyawan pada kursus."""
+
+    __tablename__ = "training_enrollments"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    employment_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("employments.id"), nullable=False, index=True
+    )
+    course_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("training_courses.id"), nullable=False, index=True
+    )
+    # Opsional: enrollment yang lahir dari rekomendasi siklus kalibrasi.
+    cycle_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("review_cycles.id"), nullable=True, index=True
+    )
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False,
+        default="registered")  # registered/in_progress/completed/cancelled
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # Sertifikat: referensi ke documents.id; tanpa FK keras agar modul
+    # dokumen tetap opsional (disimpan sebagai UUID nullable).
+    certificate_document_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )

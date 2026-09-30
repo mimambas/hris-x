@@ -450,6 +450,31 @@ def main() -> None:
         # Scope unit kerja sendiri ditegakkan di kode (ADR-0009).
         grant(role_mgr, "requisition", can_view=True, can_correct=True)
         grant(role_mgr, "job_application", can_view=True, can_correct=True)
+        # Sprint 7: grant penuh 5 objek kinerja & pelatihan ke HR Admin.
+        # (HR Admin juga punya "*", ini eksplisit agar konsisten.)
+        for obj in ("review_cycle", "goal", "appraisal",
+                    "training_course", "training_enrollment"):
+            grant(role_admin, obj,
+                  can_view=True, can_view_history=True, can_insert=True,
+                  can_correct=True, can_delete=True)
+        # Sprint 7: manajer — kelola goal & appraisal timnya + baca siklus
+        # & kursus (scope tim ditegakkan di kode via target population).
+        grant(role_mgr, "review_cycle", can_view=True)
+        grant(role_mgr, "goal", can_view=True, can_correct=True)
+        grant(role_mgr, "appraisal", can_view=True, can_correct=True)
+        grant(role_mgr, "training_course", can_view=True)
+        grant(role_mgr, "training_enrollment", can_view=True,
+              can_correct=True)
+        # Sprint 7: karyawan — self-service goal & appraisal sendiri
+        # (ESS, pola Sprint 5) + baca siklus & kursus.
+        grant(role_emp, "review_cycle", can_view=True)
+        grant(role_emp, "goal", can_view=True, can_insert=True,
+              can_correct=True)
+        grant(role_emp, "appraisal", can_view=True, can_insert=True,
+              can_correct=True)
+        grant(role_emp, "training_course", can_view=True)
+        grant(role_emp, "training_enrollment", can_view=True, can_insert=True,
+              can_correct=True)
         db.flush()
 
         # ---- User tambahan terikat ke Person ----

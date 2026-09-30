@@ -19,6 +19,7 @@ from app.api.v1 import (
     org,
     overtime,
     payroll,
+    performance,
     persons,
     rbac,
     recruitment,
@@ -40,6 +41,7 @@ api_router.include_router(contracts.router)
 api_router.include_router(imports.router)
 api_router.include_router(documents.router)
 api_router.include_router(payroll.router)
+api_router.include_router(performance.router)
 api_router.include_router(attendance.router)
 api_router.include_router(leave.router)
 api_router.include_router(overtime.router)

@@ -1295,3 +1295,185 @@ class AcceptOfferOut(BaseModel):
     nik: str
     full_name: str
     start_date: date
+
+
+# ------------------------------------------------------------------ Sprint 7: kinerja & pelatihan
+CYCLE_STATUSES = ("draft", "goal_setting", "mid_year", "year_end",
+                  "calibration", "closed")
+GOAL_STATUSES = ("draft", "submitted", "approved", "rejected")
+ENROLLMENT_STATUSES = ("registered", "in_progress", "completed", "cancelled")
+
+
+class CycleCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    year: int = Field(ge=2000, le=2100)
+    start_date: date
+    end_date: date
+
+
+class CycleOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    name: str
+    year: int
+    status: str
+    start_date: date
+    end_date: date
+
+
+class CycleTransition(BaseModel):
+    to_status: str
+
+
+class GoalCreate(BaseModel):
+    employment_id: uuid.UUID
+    title: str = Field(min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=5000)
+    weight: int = Field(ge=1, le=100)
+    target_text: str | None = Field(default=None, max_length=500)
+
+
+class GoalOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    employment_id: uuid.UUID
+    cycle_id: uuid.UUID
+    title: str
+    description: str | None
+    weight: int
+    target_text: str | None
+    status: str
+    manager_comment: str | None
+
+
+class GoalDecision(BaseModel):
+    note: str | None = Field(default=None, max_length=1000)
+
+
+class GoalScore(BaseModel):
+    goal_id: uuid.UUID
+    score: int = Field(ge=1, le=5)
+    comment: str | None = Field(default=None, max_length=1000)
+
+
+class ManagerGoalScore(BaseModel):
+    goal_id: uuid.UUID
+    score: int = Field(ge=1, le=5)
+
+
+class AppraisalCreate(BaseModel):
+    employment_id: uuid.UUID
+    cycle_id: uuid.UUID
+
+
+class AppraisalOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    employment_id: uuid.UUID
+    cycle_id: uuid.UUID
+    self_scores: list | None
+    self_submitted_at: datetime | None
+    manager_scores: list | None
+    manager_submitted_at: datetime | None
+    potential_score: int | None
+    final_score: float | None
+
+
+class SelfAssessmentCreate(BaseModel):
+    scores: list[GoalScore] = Field(min_length=1)
+
+
+class ManagerScoreCreate(BaseModel):
+    scores: list[ManagerGoalScore] = Field(min_length=1)
+
+
+class CalibrateCreate(BaseModel):
+    potential_score: int = Field(ge=1, le=5)
+
+
+class NineBoxEntry(BaseModel):
+    employment_id: uuid.UUID
+    person_name: str
+    final_score: float
+    potential_score: int
+    perf_category: str
+    pot_category: str
+    box_key: str
+    label_id: str
+    label_en: str
+
+
+class NineBoxOut(BaseModel):
+    cycle_id: uuid.UUID
+    cycle_name: str
+    boxes: dict[str, list[NineBoxEntry]]
+
+
+class TrainingRecommendationOut(BaseModel):
+    employment_id: uuid.UUID
+    person_name: str
+    box_key: str
+    label_id: str
+    label_en: str
+    final_score: float
+    potential_score: int
+    recommended_categories: list[str]
+    courses: list["CourseOut"]
+
+
+class CourseCreate(BaseModel):
+    code: str = Field(min_length=1, max_length=50)
+    name: str = Field(min_length=1, max_length=200)
+    provider: str | None = Field(default=None, max_length=200)
+    duration_hours: int = Field(default=0, ge=0)
+    cost: int = Field(default=0, ge=0)
+
+
+class CourseOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    code: str
+    name: str
+    provider: str | None
+    duration_hours: int
+    cost: int
+
+
+class EnrollmentCreate(BaseModel):
+    employment_id: uuid.UUID
+    course_id: uuid.UUID
+    cycle_id: uuid.UUID | None = None
+
+
+class EnrollmentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    employment_id: uuid.UUID
+    course_id: uuid.UUID
+    cycle_id: uuid.UUID | None
+    status: str
+    completed_at: datetime | None
+    certificate_document_id: uuid.UUID | None
+
+
+class EnrollmentComplete(BaseModel):
+    certificate_document_id: uuid.UUID | None = None
+
+
+class EnrollmentDecision(BaseModel):
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class PerformancePolicyOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    perf_low_max: float
+    perf_med_max: float
+    pot_low_max: float
+    pot_med_max: float
+
+
+class PerformancePolicyUpdate(BaseModel):
+    perf_low_max: float = Field(ge=0, le=5)
+    perf_med_max: float = Field(ge=0, le=5)
+    pot_low_max: float = Field(ge=0, le=5)
+    pot_med_max: float = Field(ge=0, le=5)

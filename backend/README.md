@@ -328,6 +328,91 @@ curl -s -X POST localhost:8000/api/v1/public/offers/<token>/accept \
 
 Detail keputusan & simplifikasi jujur: `docs/adr/0009-recruitment.md`.
 
+## Yang baru di Sprint 7 (PRD 24.2 S7: penilaian kinerja, 9-box, pelatihan)
+
+- **Siklus**: `draft → goal_setting → mid_year → year_end → calibration → closed`
+  (maju satu langkah; lompat/mundur 422; `closed` = immutable).
+- **Goal**: karyawan buat (draft) → submit → atasan/HR approve/reject
+  (tak bisa menilai diri sendiri). Total bobot goal APPROVED harus tepat
+  100% saat approve maupun self-assessment → 422 bila tidak.
+- **Appraisal**: self-assessment (fase goal_setting–year_end) → manager
+  score (hanya year_end; ditolak bila self belum submit) → kalibrasi
+  (hanya calibration; isi potential 1–5) → `final_score =
+  Σ(weight × manager_score)/100`.
+- **Matriks 9-box**: `GET /api/v1/performance/cycles/<uuid>/nine-box`
+  (422 bila siklus belum calibration/closed). Hanya untuk HR
+  (superadmin atau population "all"); karyawan biasa yang mengintip
+  data orang lain → 404.
+- **Rekomendasi pelatihan**: rule-based deterministik per kotak 9-box
+  (BUKAN AI), mis. star → Leadership Development + Mentoring;
+  `GET .../training-recommendations?employment_id=<uuid>`.
+- **Pelatihan**: katalog kursus (`training_course`) + enrollment
+  (`registered → completed/cancelled`), bisa terikat ke siklus kalibrasi.
+- **RBP**: object baru `review_cycle`, `goal`, `appraisal`,
+  `training_course`, `training_enrollment`; grant penuh ke HR Admin,
+  manajer kelola timnya, karyawan self-service milik sendiri.
+- **Demo end-to-end**: `../.venv/bin/python scripts/demo_performance_flow.py` —
+  siklus "Penilaian Tahunan 2026", 5 karyawan (goal → approve →
+  self-assessment → manager score oleh Dewi + HR → kalibrasi),
+  matriks 9-box terisi 5 kotak (Bintang: Dewi Lestari; Potensi Tinggi:
+  Budi Santoso; dst) → `demo/demo_nine_box.json`; rekomendasi +
+  enrollment pelatihan selesai.
+
+```bash
+# Siklus → goal_setting
+curl -s -X POST localhost:8000/api/v1/performance/cycles \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"name":"Penilaian Tahunan 2026","year":2026,
+       "start_date":"2026-01-01","end_date":"2026-12-31"}'
+curl -s -X POST localhost:8000/api/v1/performance/cycles/<uuid>/transition \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"to_status":"goal_setting"}'
+
+# Goal (karyawan) → submit → approve (atasan/HR)
+curl -s -X POST localhost:8000/api/v1/performance/cycles/<uuid>/goals \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"employment_id":"<uuid>","title":"Selesaikan 12 fitur","weight":100,
+       "target_text":"Tepat waktu"}'
+curl -s -X POST localhost:8000/api/v1/performance/goals/<uuid>/submit \
+  -H "Authorization: Bearer $TOKEN"
+curl -s -X POST localhost:8000/api/v1/performance/goals/<uuid>/approve \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"note":"Disetujui"}'
+
+# Appraisal: self-assessment → manager score → kalibrasi
+curl -s -X POST localhost:8000/api/v1/performance/appraisals \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"employment_id":"<uuid>","cycle_id":"<uuid>"}'
+curl -s -X POST localhost:8000/api/v1/performance/appraisals/<uuid>/self-assessment \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"scores":[{"goal_id":"<uuid>","score":4,"comment":"Mandiri"}]}'
+curl -s -X POST localhost:8000/api/v1/performance/appraisals/<uuid>/manager-score \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"scores":[{"goal_id":"<uuid>","score":5}]}'
+curl -s -X POST localhost:8000/api/v1/performance/appraisals/<uuid>/calibrate \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"potential_score":5}'
+
+# Matriks 9-box (HR) + rekomendasi pelatihan
+curl -s localhost:8000/api/v1/performance/cycles/<uuid>/nine-box \
+  -H "Authorization: Bearer $TOKEN"
+curl -s "localhost:8000/api/v1/performance/cycles/<uuid>/training-recommendations?employment_id=<uuid>" \
+  -H "Authorization: Bearer $TOKEN"
+
+# Kursus + enrollment
+curl -s -X POST localhost:8000/api/v1/performance/courses \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"code":"LD-01","name":"Leadership Development","provider":"Hashiru Academy",
+       "duration_hours":16,"cost":2500000}'
+curl -s -X POST localhost:8000/api/v1/performance/enrollments \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"employment_id":"<uuid>","course_id":"<uuid>"}'
+curl -s -X POST localhost:8000/api/v1/performance/enrollments/<uuid>/complete \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d '{}'
+```
+
+Detail keputusan & simplifikasi jujur: `docs/adr/0010-performance-training.md`.
+
 ## Yang baru di Sprint 3 (PRD 4: CHR-003 s.d. CHR-012)
 
 - **Katalog lifecycle** (CHR-003/004): event & alasan tersimpan sebagai

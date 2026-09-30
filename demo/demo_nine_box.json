@@ -1,0 +1,60 @@
+{
+  "siklus": "Penilaian Tahunan 2026",
+  "kotak": {
+    "star": {
+      "label_id": "Bintang",
+      "label_en": "Star",
+      "anggota": [
+        {
+          "nama": "Dewi Lestari",
+          "skor_kinerja": 5.0,
+          "skor_potensi": 5
+        }
+      ]
+    },
+    "high_performer": {
+      "label_id": "Berkinerja Tinggi",
+      "label_en": "High Performer",
+      "anggota": [
+        {
+          "nama": "Sari Wijaya",
+          "skor_kinerja": 4.0,
+          "skor_potensi": 3
+        }
+      ]
+    },
+    "high_potential": {
+      "label_id": "Potensi Tinggi",
+      "label_en": "High Potential",
+      "anggota": [
+        {
+          "nama": "Budi Santoso",
+          "skor_kinerja": 3.0,
+          "skor_potensi": 5
+        }
+      ]
+    },
+    "key_player": {
+      "label_id": "Pemain Kunci",
+      "label_en": "Key Player",
+      "anggota": [
+        {
+          "nama": "Rina Kartika",
+          "skor_kinerja": 3.0,
+          "skor_potensi": 3
+        }
+      ]
+    },
+    "rough_diamond": {
+      "label_id": "Berlian Mentah",
+      "label_en": "Rough Diamond",
+      "anggota": [
+        {
+          "nama": "Andi Pratama",
+          "skor_kinerja": 2.0,
+          "skor_potensi": 4
+        }
+      ]
+    }
+  }
+}

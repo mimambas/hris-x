@@ -62,7 +62,10 @@ BEGIN
             'overtime_rates', 'overtime_requests',
             'job_requisitions', 'job_postings', 'candidates',
             'job_applications', 'interviews', 'interview_feedbacks',
-            'offers'
+            'offers',
+            'review_cycles', 'performance_goals', 'appraisals',
+            'tenant_performance_policies', 'training_courses',
+            'training_enrollments'
           )
     LOOP
         -- Isolasi tenant: baris hanya terlihat bila tenant_id cocok.
