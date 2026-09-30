@@ -224,17 +224,18 @@ def main() -> None:
 
         # ---- Karyawan ----
         people = [
-            # (nik, nama, legal_entity, start, end, status)
-            ("3174010101900001", "Budi Santoso", le1, date(2024, 3, 1), None, "active"),
-            ("3174010202920002", "Sari Wijaya", le1, date(2025, 6, 1), None, "active"),
-            ("3174010303930003", "Andi Pratama", le2, date(2023, 1, 15), None, "active"),
-            ("3174010404940004", "Dewi Lestari", le1, date(2022, 8, 1), None, "active"),
+            # (nik, nama, legal_entity, start, end, status, gender)
+            ("3174010101900001", "Budi Santoso", le1, date(2024, 3, 1), None, "active", "L"),
+            ("3174010202920002", "Sari Wijaya", le1, date(2025, 6, 1), None, "active", "P"),
+            ("3174010303930003", "Andi Pratama", le2, date(2023, 1, 15), None, "active", "L"),
+            ("3174010404940004", "Dewi Lestari", le1, date(2022, 8, 1), None, "active", "P"),
             ("3174010505950005", "Rina Kartika", le2, date(2026, 1, 10),
-             date(2026, 12, 31), "contract"),
+             date(2026, 12, 31), "contract", "P"),
         ]
         persons, employments = {}, {}
-        for nik, nama, le, start, end, status in people:
-            p = Person(tenant_id=tenant.id, nik=nik, full_name=nama)
+        for nik, nama, le, start, end, status, gender in people:
+            p = Person(tenant_id=tenant.id, nik=nik, full_name=nama,
+                       gender=gender)
             db.add(p)
             db.flush()
             e = Employment(tenant_id=tenant.id, person_id=p.id,
@@ -429,6 +430,8 @@ def main() -> None:
         for obj in ("person", "employment", "job_info", "comp_info", "org",
                     "audit_log", "cost_center", "custom_field"):
             grant(role_mgr, obj, can_view=True, can_view_history=True)
+        # Sprint 9: dasbor (manajer terfilter otomatis ke timnya via target population).
+        grant(role_mgr, "dashboard", can_view=True)
         # Manajer: lihat + putuskan pengajuan cuti/lembur tim (Sprint 5).
         for obj in ("leave_request", "overtime_request", "attendance",
                     "leave_type", "holiday", "shift"):

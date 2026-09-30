@@ -121,3 +121,13 @@ def validate_birth_date(value) -> date | None:
     if d is not None and d > date.today():
         raise ValueError("Tanggal lahir tidak boleh di masa depan")
     return d
+
+
+def validate_gender(value: str | None) -> str | None:
+    """Jenis kelamin: 'L' (laki-laki) atau 'P' (perempuan); None = tak diisi."""
+    if value is None:
+        return None
+    v = value.strip().upper()
+    if v not in ("L", "P"):
+        raise ValueError("Jenis kelamin harus 'L' atau 'P'")
+    return v

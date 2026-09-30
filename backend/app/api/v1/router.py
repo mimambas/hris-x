@@ -12,6 +12,7 @@ from app.api.v1 import (
     comp_info,
     contracts,
     custom_fields,
+    dashboard,
     documents,
     imports,
     job_info,
@@ -25,6 +26,7 @@ from app.api.v1 import (
     persons,
     rbac,
     recruitment,
+    reports,
     tenants,
 )
 
@@ -50,3 +52,5 @@ api_router.include_router(overtime.router)
 api_router.include_router(recruitment.router)
 api_router.include_router(claims.router)
 api_router.include_router(loans.router)
+api_router.include_router(dashboard.router)
+api_router.include_router(reports.router)

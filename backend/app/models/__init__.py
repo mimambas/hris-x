@@ -74,6 +74,7 @@ class Person(Base):
     birth_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(30), nullable=True)  # Sprint 6: dari offer accept
+    gender: Mapped[str | None] = mapped_column(String(1), nullable=True)  # Sprint 9: "L"/"P"
     npwp: Mapped[str | None] = mapped_column(String(16), nullable=True)  # format baru 16 digit
     ptkp: Mapped[str] = mapped_column(String(4), nullable=False, default="TK/0")
     bpjs_kes_no: Mapped[str | None] = mapped_column(String(20), nullable=True)

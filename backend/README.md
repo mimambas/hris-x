@@ -477,6 +477,41 @@ curl -s "localhost:8000/api/v1/claims/summary/yearly?employment_id=<uuid>&year=2
 
 Detail keputusan & simplifikasi jujur: `docs/adr/0011-claim-loan.md`.
 
+## Yang baru di Sprint 9 (PRD 24.2 S9: dasbor & laporan standar)
+
+- **Dasbor real-time** (tanpa cache, semua dari data live per tanggal):
+  `GET /api/v1/dashboard/headcount?as_of=` (total + breakdown unit /
+  jenis kontrak PKWT-PKWTT / jenis kelamin / status, karyawan baru &
+  keluar bulan ini), `turnover?period=` (definisi ANL-004 baku:
+  terminasi ÷ rata-rata headcount × 100% + breakdown unit + tren 12
+  bulan), `attendance?period=`, `leave?year=`, `payroll?period=` (izin
+  `payroll` view), `demographics?as_of=` (usia, masa kerja, gender).
+- **Headcount historis yang benar**: karyawan yang terminasi *setelah*
+  tanggal as_of tetap dihitung aktif per tanggal tersebut.
+- **RBP**: objek izin baru `dashboard` (view); Direktur/HR semua data,
+  manajer terfilter otomatis ke timnya (target population), karyawan
+  biasa 403.
+- **Laporan XLSX**: `GET /reports/employees.xlsx` dan
+  `GET /reports/payroll-summary.xlsx?period=` — menghormati target
+  population, tercatat di audit (aksi `export`).
+- **Kolom baru `Person.gender`** ("L"/"P", nullable, dinormalisasi,
+  nilai lain 422) — aditif di create/update/out + offer accept.
+- **Demo end-to-end**: `../.venv/bin/python scripts/demo_dashboard.py`
+  — karyawan baru (PKWT) → terminasi bulan berjalan → headcount &
+  turnover real-time → `demo/demo_dashboard.json` (headcount 5,
+  turnover Sep 2026: 20,0%, top unit Tim Backend).
+
+```bash
+curl -s "localhost:8000/api/v1/dashboard/headcount?as_of=2026-09-30" \
+  -H "Authorization: Bearer $TOKEN"
+curl -s "localhost:8000/api/v1/dashboard/turnover?period=2026-09" \
+  -H "Authorization: Bearer $TOKEN"
+curl -s "localhost:8000/api/v1/reports/employees.xlsx" \
+  -H "Authorization: Bearer $TOKEN" -o karyawan.xlsx
+```
+
+Detail keputusan & simplifikasi jujur: `docs/adr/0012-dashboard-reports.md`.
+
 ## Yang baru di Sprint 3 (PRD 4: CHR-003 s.d. CHR-012)
 
 - **Katalog lifecycle** (CHR-003/004): event & alasan tersimpan sebagai
@@ -560,3 +595,7 @@ Detail keputusan & simplifikasi jujur: `docs/adr/0011-claim-loan.md`.
    memakai run terkunci).
 4. RBP dievaluasi per-request dari DB (tanpa cache); untuk skala besar
    perlu materialisasi/cache grup.
+5. Dasbor Sprint 9: tanpa cache & tanpa tabel agregat (dihitung live —
+   mahal di skala ribuan karyawan); laporan hanya XLSX on-demand (tanpa
+   CSV/PDF terjadwal); metrik absensi dari record tercatat saja; gender
+   hanya L/P/tidak-diisi (lihat ADR-0012).

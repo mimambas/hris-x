@@ -1,0 +1,51 @@
+{
+  "generated_at": "2026-09-30",
+  "period": "2026-09",
+  "as_of": "2026-09-30",
+  "headcount_total": 5,
+  "headcount": {
+    "as_of": "2026-09-30",
+    "total": 5,
+    "by_org_unit": {
+      "Departemen Engineering": 1,
+      "Departemen Logistik": 1,
+      "Tim Backend": 3
+    },
+    "by_contract_type": {
+      "Tanpa kontrak": 4,
+      "PKWT": 1
+    },
+    "by_gender": {
+      "P": 2,
+      "L": 3
+    },
+    "by_status": {
+      "active": 4,
+      "terminated": 1
+    },
+    "new_this_month": 0,
+    "left_this_month": 1
+  },
+  "turnover_bulan_berjalan": {
+    "period": "2026-09",
+    "terminated": 1,
+    "rate_pct": 20.0,
+    "by_org_unit": {
+      "Tim Backend": 1
+    }
+  },
+  "top_unit": {
+    "name": "Tim Backend",
+    "headcount": 3
+  },
+  "demografi_ringkas": {
+    "by_gender": {
+      "P": 2,
+      "L": 3
+    },
+    "by_age": {
+      "Tidak diketahui": 4,
+      "30-39": 1
+    }
+  }
+}

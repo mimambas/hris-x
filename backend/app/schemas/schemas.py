@@ -12,6 +12,7 @@ from app.services.validation import (
     validate_birth_date,
     validate_bpjs,
     validate_email,
+    validate_gender,
     validate_nik,
     validate_npwp,
     validate_ptkp,
@@ -65,6 +66,7 @@ class PersonCreate(BaseModel):
     full_name: str = Field(min_length=1, max_length=200)
     birth_place: str | None = Field(default=None, max_length=120)
     birth_date: date | None = None
+    gender: str | None = Field(default=None, max_length=1)  # Sprint 9: L/P
     email: str | None = None
     phone: str | None = Field(default=None, max_length=30)
     npwp: str | None = None
@@ -110,6 +112,11 @@ class PersonCreate(BaseModel):
     def _bank_acc_valid(cls, v: str | None) -> str | None:
         return validate_bank_account(v)
 
+    @field_validator("gender")
+    @classmethod
+    def _gender_valid(cls, v: str | None) -> str | None:
+        return validate_gender(v)
+
     @field_validator("birth_date")
     @classmethod
     def _birth_date_valid(cls, v: date | None) -> date | None:
@@ -134,12 +141,18 @@ class PersonUpdate(BaseModel):
     bpjs_tk_no: str | None = None
     bank_name: str | None = Field(default=None, max_length=100)
     bank_account_no: str | None = None
+    gender: str | None = Field(default=None, max_length=1)  # Sprint 9: L/P
     reason: str = Field(min_length=1, max_length=500)
 
     @field_validator("nik")
     @classmethod
     def _nik_valid(cls, v: str | None) -> str | None:
         return validate_nik(v) if v is not None else None
+
+    @field_validator("gender")
+    @classmethod
+    def _gender_valid(cls, v: str | None) -> str | None:
+        return validate_gender(v)
 
     @field_validator("npwp")
     @classmethod
@@ -193,6 +206,7 @@ class PersonOut(BaseModel):
     full_name: str
     birth_place: str | None
     birth_date: date | None
+    gender: str | None  # Sprint 9: L/P
     email: str | None
     phone: str | None
     npwp: str | None
@@ -1265,12 +1279,21 @@ class AcceptOfferCreate(BaseModel):
     full_name: str = Field(min_length=1, max_length=200)
     birth_place: str | None = Field(default=None, max_length=120)
     birth_date: date | None = None
+    gender: str | None = Field(default=None, max_length=1)  # Sprint 9: L/P
     email: str | None = None
     phone: str | None = Field(default=None, max_length=30)
     bank_name: str | None = Field(default=None, max_length=100)
     bank_account_no: str | None = None
 
     @field_validator("nik")
+    @classmethod
+    def _nik_valid(cls, v: str) -> str:
+        return validate_nik(v)
+
+    @field_validator("gender")
+    @classmethod
+    def _gender_valid(cls, v: str | None) -> str | None:
+        return validate_gender(v)
     @classmethod
     def _nik_valid(cls, v: str) -> str:
         return validate_nik(v)

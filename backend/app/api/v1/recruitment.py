@@ -1039,7 +1039,7 @@ def accept_offer_public(token: str, body: AcceptOfferCreate,
     person = Person(
         tenant_id=tenant_id, nik=body.nik, full_name=body.full_name.strip(),
         birth_place=(body.birth_place or "").strip() or None,
-        birth_date=body.birth_date,
+        birth_date=body.birth_date, gender=body.gender,
         email=body.email.strip().lower() if body.email else None,
         phone=(body.phone or "").strip() or None,
         bank_name=(body.bank_name or "").strip() or None,
