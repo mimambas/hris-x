@@ -141,6 +141,25 @@ def test_weight_not_100_rejected_on_approve(client, ctx):
     assert "100%" in r.text
 
 
+def test_approve_split_weights_sequentially(client, ctx):
+    """Regresi UAT R2: dua sasaran 60+40 yang diajukan sebagai paket 100%
+    harus bisa di-approve satu per satu (bukan ditolak karena parsial)."""
+    h = ah(client)
+    c = _mk_cycle(client, h)
+    assert _transition(client, h, c["id"], "goal_setting").status_code == 200
+    emp = ctx["e_full"].id
+    g1 = _mk_goal(client, h, c["id"], emp, weight=60, title="Sasaran A")
+    g2 = _mk_goal(client, h, c["id"], emp, weight=40, title="Sasaran B")
+    _submit_goal(client, h, g1["id"])
+    _submit_goal(client, h, g2["id"])
+    r1 = _approve_goal(client, h, g1["id"])
+    assert r1.status_code == 200, r1.text
+    assert r1.json()["status"] == "approved"
+    r2 = _approve_goal(client, h, g2["id"])
+    assert r2.status_code == 200, r2.text
+    assert r2.json()["status"] == "approved"
+
+
 def test_self_assessment_requires_weight_100(client, ctx):
     h = ah(client)
     c = _mk_cycle(client, h)
@@ -367,3 +386,46 @@ def test_course_enrollment_flow(client, ctx):
     assert r.status_code == 200, r.text
     assert r.json()["status"] == "completed"
     assert r.json()["completed_at"] is not None
+
+
+def test_list_appraisals_by_employment_and_cycle(client, ctx):
+    """Regresi endpoint aditif GET /performance/appraisals (untuk UI tab
+    Penilaian): memuat appraisal yang sudah dibuat tanpa menyimpan id."""
+    h = ah(client)
+    c = _mk_cycle(client, h)
+    emp_id = ctx["e_full"].id
+    appr = _mk_appraisal(client, h, emp_id, c["id"])
+    r = client.get("/api/v1/performance/appraisals",
+                   params={"employment_id": str(emp_id),
+                           "cycle_id": str(c["id"])}, headers=h)
+    assert r.status_code == 200, r.text
+    rows = r.json()
+    assert len(rows) == 1 and rows[0]["id"] == appr["id"]
+    # Tanpa filter siklus tetap mengembalikan baris yang sama.
+    r = client.get("/api/v1/performance/appraisals",
+                   params={"employment_id": str(emp_id)}, headers=h)
+    assert r.status_code == 200, r.text
+    assert any(row["id"] == appr["id"] for row in r.json())
+
+
+def test_list_enrollments_tanpa_employment_id(client, ctx):
+    """Regresi: GET /performance/enrollments tanpa employment_id mengembalikan
+    seluruh enrollment tenant (dipakai halaman Pelatihan); sebelumnya 422
+    'Field required' sehingga katalog kursus di UI selalu tampak kosong."""
+    h = ah(client)
+    r = client.post("/api/v1/performance/courses", headers=h, json={
+        "code": "RG-01", "name": "Regresi List"})
+    assert r.status_code == 201, r.text
+    course = r.json()
+    r = client.post("/api/v1/performance/enrollments", headers=h, json={
+        "employment_id": str(ctx["e_full"].id), "course_id": course["id"]})
+    assert r.status_code == 201, r.text
+    enr = r.json()
+    r = client.get("/api/v1/performance/enrollments", headers=h)
+    assert r.status_code == 200, r.text
+    assert any(row["id"] == enr["id"] for row in r.json())
+    # Filter employment_id tetap berfungsi.
+    r = client.get("/api/v1/performance/enrollments", headers=h, params={
+        "employment_id": str(ctx["e_full"].id)})
+    assert r.status_code == 200, r.text
+    assert any(row["id"] == enr["id"] for row in r.json())

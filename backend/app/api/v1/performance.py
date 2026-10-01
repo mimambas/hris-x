@@ -357,12 +357,22 @@ def approve_goal(goal_id: uuid.UUID, body: GoalDecision, request: Request,
                             "yang bisa di-approve")
     emp = _employment(db, user, goal.employment_id)
     _manager_scope(db, user, emp, "goal", "menyetujui goal")
-    # Total bobot APPROVED (termasuk goal ini) harus tepat 100%.
-    total = (perf_service.approved_weight_total(db, user.tenant_id, emp.id,
-                                               cycle.id) + goal.weight)
-    if total != 100:
+    # Syarat approval: total bobot goal AKTIF (submitted + approved) milik
+    # karyawan harus tepat 100% — manajer menyetujui paket sasaran yang
+    # lengkap, satu per satu. Invarian "total approved == 100" ditegakkan
+    # saat self-assessment/appraisal dibuat via ensure_weight_100.
+    active_total = sum(
+        g.weight for g in db.execute(
+            select(PerformanceGoal).where(
+                PerformanceGoal.tenant_id == user.tenant_id,
+                PerformanceGoal.cycle_id == cycle.id,
+                PerformanceGoal.employment_id == emp.id,
+                PerformanceGoal.status.in_(["submitted", "approved"]))
+        ).scalars().all()
+    )
+    if active_total != 100:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
-                            f"Total bobot goal yang disetujui = {total}%, "
+                            f"Total bobot goal yang diajukan = {active_total}%, "
                             "harus tepat 100%")
     goal.status = "approved"
     if (body.note or "").strip():
@@ -444,6 +454,29 @@ def get_appraisal(appraisal_id: uuid.UUID,
     emp = _employment(db, user, appr.employment_id)
     _view_scope(db, user, emp, "appraisal")
     return appr
+
+
+@router.get("/performance/appraisals",
+            response_model=list[AppraisalOut],
+            dependencies=[Depends(require_permission("appraisal",
+                                                       "view"))])
+def list_appraisals(employment_id: uuid.UUID = Query(...),
+                    cycle_id: uuid.UUID | None = Query(default=None),
+                    user: User = Depends(get_current_user),
+                    db: Session = Depends(get_db)):
+    """Daftar appraisal milik satu employment (opsional filter siklus).
+
+    Endpoint aditif untuk mendukung UI tab Penilaian (frontend butuh
+    memuat ulang appraisal yang sudah dibuat tanpa menyimpan id).
+    """
+    emp = resolve_employment(db, user, employment_id, "appraisal", "view")
+    _view_scope(db, user, emp, "appraisal")
+    stmt = select(Appraisal).where(
+        Appraisal.tenant_id == user.tenant_id,
+        Appraisal.employment_id == emp.id)
+    if cycle_id is not None:
+        stmt = stmt.where(Appraisal.cycle_id == cycle_id)
+    return db.execute(stmt.order_by(Appraisal.id)).scalars().all()
 
 
 def _check_score_coverage(db: Session, user: User, appr: Appraisal,
@@ -783,16 +816,19 @@ def create_enrollment(body: EnrollmentCreate, request: Request,
             response_model=list[EnrollmentOut],
             dependencies=[Depends(require_permission("training_enrollment",
                                                        "view"))])
-def list_enrollments(employment_id: uuid.UUID = Query(...),
+def list_enrollments(employment_id: uuid.UUID | None = Query(default=None),
                      user: User = Depends(get_current_user),
                      db: Session = Depends(get_db)):
-    emp = resolve_employment(db, user, employment_id, "training_enrollment",
-                             "view")
-    return db.execute(
-        select(TrainingEnrollment).where(
-            TrainingEnrollment.tenant_id == user.tenant_id,
-            TrainingEnrollment.employment_id == emp.id)
-    ).scalars().all()
+    # employment_id opsional: bila diisi, filter ke satu employment (dengan
+    # cek RBP); bila kosong, kembalikan seluruh enrollment tenant — dipakai
+    # halaman Pelatihan (tabel pendaftaran tenant-wide).
+    q = select(TrainingEnrollment).where(
+        TrainingEnrollment.tenant_id == user.tenant_id)
+    if employment_id is not None:
+        emp = resolve_employment(db, user, employment_id,
+                                 "training_enrollment", "view")
+        q = q.where(TrainingEnrollment.employment_id == emp.id)
+    return db.execute(q.order_by(TrainingEnrollment.id)).scalars().all()
 
 
 @router.get("/performance/enrollments/{enrollment_id}",
