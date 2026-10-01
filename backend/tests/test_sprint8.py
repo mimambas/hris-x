@@ -515,16 +515,19 @@ def test_payoff_melunasi_pinjaman_di_run_berikutnya(client, ctx):
                     json={"reason": "ok"})
     assert r.status_code == 200, r.text
 
-    # Pelunasan dipercepat: sisa 6jt menjadi potongan di 2026-09
+    # Pelunasan dipercepat: sisa 6jt menjadi potongan di periode berjalan
+    # (periode = bulan hari ini; tanpa run sebelumnya _next_open_period
+    # memakai date.today() — test ini tidak boleh hardcode bulan).
     # (cicilan 12jt > gaji akan ditolak lock karena take-home negatif).
     r = client.post(f"/api/v1/loans/{loan['id']}/payoff", headers=h)
     assert r.status_code == 201, r.text
     inst = r.json()
     assert inst["kind"] == "payoff"
     assert inst["amount"] == 6_000_000
-    assert inst["period"] == "2026-09"
+    periode = date.today().strftime("%Y-%m")
+    assert inst["period"] == periode
 
-    run = _run(client, h, "2026-09")
+    run = _run(client, h, periode)
     r = client.get(f"/api/v1/payroll/runs/{run['id']}/lines", headers=h)
     lines = [l for l in r.json() if l["employment_id"] == e["id"]]
     assert lines[0]["breakdown"]["cicilan_pinjaman"] == 6_000_000

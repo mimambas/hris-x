@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import extract, func, select
 from sqlalchemy.orm import Session
 
 from app.models import Claim, ClaimType, Employment
@@ -95,7 +95,9 @@ def _yearly_used(db: Session, tenant_id, employment_id, claim_type_id,
             Claim.employment_id == employment_id,
             Claim.claim_type_id == claim_type_id,
             Claim.status.in_(CONSUMING_STATUSES),
-            func.strftime("%Y", Claim.claim_date) == str(year),
+            # STAGING-FIX (2026-10-01): func.strftime hanya ada di SQLite;
+            # extract() portabel SQLite <-> Postgres.
+            extract("year", Claim.claim_date) == year,
         )
     )
     if exclude_id is not None:

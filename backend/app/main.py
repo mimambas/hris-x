@@ -18,6 +18,7 @@ from app.core.config import (
     get_secret_key,
 )
 from app.core.db import get_engine, init_db
+from app.core.rls import clear_request_tenant_id
 from app.models import Base
 
 
@@ -60,6 +61,18 @@ def create_app(database_url: str | None = None) -> FastAPI:
             allow_headers=["*"],
             allow_credentials=True,
         )
+
+    # RLS request-context (ADR-0014): reset ContextVar tenant di awal &
+    # akhir setiap request — higiene agar tenant request sebelumnya tidak
+    # bocor ke request berikutnya (worker async dipakai ulang). Didaftarkan
+    # duluan agar menjadi middleware terluar (finally-nya jalan paling akhir).
+    @app.middleware("http")
+    async def rls_tenant_context(request, call_next):
+        clear_request_tenant_id()
+        try:
+            return await call_next(request)
+        finally:
+            clear_request_tenant_id()
 
     # Sprint 10: security headers dasar untuk semua respons.
     @app.middleware("http")

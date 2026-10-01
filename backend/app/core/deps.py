@@ -9,6 +9,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
+from app.core.rls import set_request_tenant_id
 from app.core.security import decode_access_token
 from app.models import Tenant, User
 from app.services import rbp as rbp_service
@@ -28,12 +29,20 @@ def get_current_user(
         tenant_id = uuid.UUID(payload["tenant_id"])
     except Exception:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Token tidak valid atau kedaluwarsa")
+    # RLS bootstrap (ADR-0014): decode JWT dulu TANPA query DB, lalu set
+    # tenant dari klaim SEBELUM query apa pun. Di Postgres (RLS aktif),
+    # query tanpa tenant ter-set mengembalikan 0 baris — urutan lama
+    # (query dulu, set belakangan) membuat semua request terautentikasi
+    # 401. after_begin menerapkan SET LOCAL otomatis per transaksi.
+    set_request_tenant_id(tenant_id)
     user = db.get(User, user_id)
     if user is None or not user.is_active or user.tenant_id != tenant_id:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Token tidak valid")
     tenant = db.get(Tenant, tenant_id)
     if tenant is None or not tenant.is_active:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Tenant tidak aktif")
+    # user.tenant_id == tenant.id sudah diverifikasi di atas (defense in
+    # depth: klaim JWT cocok dengan baris DB di bawah RLS).
     return user
 
 

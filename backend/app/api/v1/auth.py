@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.api.v1.common import client_ip
 from app.core.db import get_db
 from app.core.deps import get_current_user
+from app.core.rls import set_request_tenant_id
 from app.core.security import (
     create_access_token,
     hash_password,
@@ -74,11 +75,24 @@ def clear_login_attempts() -> None:
 @router.post("/auth/login", response_model=LoginResponse)
 def login(body: LoginRequest, request: Request, db: Session = Depends(get_db)):
     key = _login_key(request, body.email)
+    # Tabel `tenants` dikecualikan dari RLS (migrations/001_rls.sql, ADR-0014)
+    # agar resolve slug bisa jalan pre-auth (pola bootstrap standar).
     tenant = (
         db.execute(select(Tenant).where(Tenant.slug == body.tenant_slug)).scalars().first()
     )
     user = None
     if tenant is not None and tenant.is_active:
+        # Set tenant SEBELUM query user: tabel users kena RLS, tanpa ini
+        # query mengembalikan 0 baris di Postgres. after_begin menerapkan
+        # SET LOCAL otomatis per transaksi (termasuk setelah commit).
+        set_request_tenant_id(tenant.id)
+        # STAGING-FIX (2026-10-01): query tenant di atas sudah membuka
+        # transaksi; after_begin TIDAK jalan lagi untuk query user di
+        # transaksi yang sama sehingga SET LOCAL tak teraplikasi → RLS
+        # memfilter semua baris → 401 di Postgres (tak terlihat di SQLite).
+        # Commit transaksi read-only ini agar query berikut jalan di
+        # transaksi baru dengan SET LOCAL yang benar.
+        db.commit()
         user = (
             db.execute(
                 select(User).where(User.tenant_id == tenant.id, User.email == body.email)

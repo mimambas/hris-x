@@ -19,7 +19,7 @@ from calendar import monthrange
 from datetime import date
 from io import BytesIO
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, extract, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -190,8 +190,10 @@ def headcount(db: Session, tenant_id, as_of: date,
             .where(
                 Employment.tenant_id == tenant_id,
                 Employment.status == "terminated",
-                func.strftime("%Y-%m", Employment.end_date)
-                == as_of.strftime("%Y-%m"),
+                # STAGING-FIX (2026-10-01): func.strftime hanya ada di
+                # SQLite; extract() portabel SQLite <-> Postgres.
+                extract("year", Employment.end_date) == as_of.year,
+                extract("month", Employment.end_date) == as_of.month,
             )
         ).scalar()
         or 0
@@ -205,8 +207,8 @@ def headcount(db: Session, tenant_id, as_of: date,
                     Employment.tenant_id == tenant_id,
                     Employment.status == "terminated",
                     Employment.person_id.in_(person_ids),
-                    func.strftime("%Y-%m", Employment.end_date)
-                    == as_of.strftime("%Y-%m"),
+                    extract("year", Employment.end_date) == as_of.year,
+                    extract("month", Employment.end_date) == as_of.month,
                 )
             ).scalar()
             or 0

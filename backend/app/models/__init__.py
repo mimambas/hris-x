@@ -1503,7 +1503,7 @@ class Offer(Base):
         DateTime(timezone=True), nullable=False
     )
     offer_token: Mapped[str | None] = mapped_column(
-        String(64), nullable=True, unique=True, index=True
+        String(128), nullable=True, unique=True, index=True
     )
     status: Mapped[str] = mapped_column(String(20), nullable=False,
                                         default="draft")

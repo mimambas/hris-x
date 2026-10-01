@@ -1,4 +1,4 @@
-# HRIS-X Backend — Fondasi Sprint 1 s.d. Go-Live Sprint 10
+# HRIS-X Backend — Fondasi Sprint 1 s.d. Go-Live Sprint 10 + Frontend & Staging (Fase 2)
 
 Fondasi platform HRIS-X sesuai PRD v1.0 (HRIS-X), Sprint S1–S10:
 **Tenant, auth, RBP dasar, audit, layanan effective dating** (S1),
@@ -6,6 +6,23 @@ modul HR lengkap (S2–S9: org, kontrak, impor, payroll, absensi/cuti/lembur,
 rekrutmen, performance 9-box, klaim & pinjaman, dasbor/laporan),
 **hardening keamanan & go-live** (S10).
 Hasil demo S1: *login multi-tenant; setiap perubahan tercatat dengan riwayat.*
+
+## Fase 2 — Frontend web & staging (2026-10-01)
+
+- **Frontend** (`../frontend/`, Next.js 14 + TypeScript + Tailwind, UI Bahasa
+  Indonesia): login multi-tenant, dasbor headcount & turnover, data karyawan,
+  pengajuan + persetujuan cuti, slip gaji PDF, org chart.
+- **Staging live** (100% gratis, tanpa kartu):
+  - Frontend: https://hris-x-frontend-staging.vercel.app
+  - Backend: https://hris-x-backend-staging.vercel.app
+    ([docs](https://hris-x-backend-staging.vercel.app/docs))
+  - Database: Neon Postgres, database `hris_x_staging` (ter-seed tenant
+    `hashiru`; RLS terverifikasi live — menutup known limitation Sprint 10).
+- Detail arsitektur & pelajaran staging: `docs/adr/0015-frontend-staging.md`
+  (+ `0014-rls-request-context.md` untuk desain konteks RLS per-request).
+- Batasan staging: `uploads/` read-only di serverless (upload struk butuh
+  object storage di produksi); IP pooler Neon di-hardcode via `hostaddr`
+  karena Vercel function tanpa egress IPv6 — refresh bila IP berubah.
 
 > Codebase ini BARU dan terpisah dari prototipe live di `~/workspace/hris/`.
 > Jangan mencampur keduanya.
@@ -605,13 +622,23 @@ Detail keputusan & simplifikasi jujur: `docs/adr/0012-dashboard-reports.md`.
 
 1. Terapkan sekali sebagai pemilik DB:
    `psql "$DATABASE_URL" -f migrations/001_rls.sql`
-2. Setiap transaksi aplikasi WAJIB: `SET LOCAL app.tenant_id='<uuid>'`
-   (konteks hilang otomatis saat transaksi selesai — aman untuk pool).
+2. Aplikasi menyetel konteks tenant **otomatis per request** via handler
+   SQLAlchemy `after_begin` (`app/core/rls.py`, ADR-0014): setiap transaksi
+   baru menjalankan `SET LOCAL app.tenant_id='<uuid>'` dari ContextVar yang
+   diisi pre-query (klaim JWT di `get_current_user`, slug di login/endpoint
+   publik). Middleware me-reset konteks di awal & akhir request.
+   **Tidak perlu SET LOCAL manual di kode request.**
 3. Role aplikasi hanya diberi GRANT DML (bukan pemilik tabel) agar
    policy dievaluasi.
 4. Verifikasi: `DATABASE_URL=... python migrations/verify_rls.py`
    (butuh Postgres asli; SQLite dev/test tidak mendukung RLS —
    isolasi tenant di sana tetap di level aplikasi).
+5. **Skrip batch** (`scripts/seed.py`, skrip `demo_*`) yang jalan langsung
+   ke Postgres di luar request HTTP **tetap perlu SET LOCAL manual**
+   per transaksi/sesi (atau jalan sebelum migrasi RLS) — ContextVar tidak
+   terisi di luar request. Lihat ADR-0014.
+6. Tabel `tenants` **dikecualikan** dari RLS (ADR-0014): slug semi-publik
+   dan wajib bisa di-resolve sebelum autentikasi (login by slug pre-auth).
 
 ## Yang BELUM dikerjakan (ruang lingkup S3+)
 

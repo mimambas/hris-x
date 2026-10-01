@@ -5,18 +5,27 @@
 -- CARA PAKAI (produksi, Postgres):
 --   1. Jalankan skrip ini sekali sebagai pemilik database:
 --        psql "$DATABASE_URL" -f backend/migrations/001_rls.sql
---   2. Aplikasi WAJIB menyetel konteks tenant di setiap transaksi:
---        SET LOCAL app.tenant_id = '<tenant-uuid>';
---      "SET LOCAL" membuat konteks otomatis hilang saat transaksi selesai,
---      sehingga tidak ada kebocoran antar-request (aman untuk pool koneksi).
+--   2. Aplikasi menyetel konteks tenant OTOMATIS per request via handler
+--      SQLAlchemy `after_begin` (app/core/rls.py, ADR-0014) — tidak perlu
+--      SET LOCAL manual di kode request. "SET LOCAL" membuat konteks
+--      otomatis hilang saat transaksi selesai, sehingga tidak ada kebocoran
+--      antar-request (aman untuk pool koneksi).
 --   3. Role aplikasi HANYA diberi GRANT SELECT/INSERT/UPDATE/DELETE pada
 --      tabel — bukan pemilik tabel — agar policy benar-benar dievaluasi.
+--   4. SKRIP BATCH (seed.py, demo) yang jalan langsung ke Postgres di luar
+--      request HTTP HARUS menyetel GUC manual per transaksi/sesi:
+--        SET LOCAL app.tenant_id = '<tenant-uuid>';
+--      atau dijalankan sebelum migrasi RLS ini diterapkan.
 --
 -- CATATAN:
 --   * SQLite (development/test) tidak mendukung RLS; isolasi tenant di
 --     sana tetap ditegakkan di level aplikasi (tenant_id di setiap query).
 --   * Tabel dengan kolom tenant_id tercakup; tabel tanpa tenant_id
 --     (mis. migrasi internal) tidak diberi policy.
+--   * Tabel `tenants` SENGAJA DIKECUALIKAN dari RLS (lihat bawah): slug
+--     bersifat semi-publik (sudah terekspos di /public/jobs?tenant=) dan
+--     wajib bisa di-resolve SEBELUM autentikasi — login me-resolve tenant
+--     by slug pre-auth (pola bootstrap standar). Rasional penuh: ADR-0014.
 --   * CREATE POLICY ... IF NOT EXISTS tidak tersedia di semua versi
 --     Postgres; skrip ini menghapus policy lama dulu (idempoten).
 -- ==============================================================================
@@ -40,7 +49,7 @@ BEGIN
         FROM pg_tables
         WHERE schemaname = 'public'
           AND tablename IN (
-            'tenants', 'users', 'persons', 'employments',
+            'users', 'persons', 'employments',
             'legal_entities', 'legal_entity_info',
             'org_units', 'org_unit_info',
             'locations', 'location_info',
@@ -71,24 +80,23 @@ BEGIN
           )
     LOOP
         -- Isolasi tenant: baris hanya terlihat bila tenant_id cocok.
-        -- 'tenants' sendiri: hanya baris tenant aktif yang terlihat.
         EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
         EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', t);
         EXECUTE format('DROP POLICY IF EXISTS tenant_isolation ON %I', t);
-        IF t = 'tenants' THEN
-            EXECUTE format(
-                'CREATE POLICY tenant_isolation ON %I '
-                'USING (id = app.current_tenant_id()) '
-                'WITH CHECK (id = app.current_tenant_id())', t);
-        ELSE
-            EXECUTE format(
-                'CREATE POLICY tenant_isolation ON %I '
-                'USING (tenant_id = app.current_tenant_id()) '
-                'WITH CHECK (tenant_id = app.current_tenant_id())', t);
-        END IF;
+        EXECUTE format(
+            'CREATE POLICY tenant_isolation ON %I '
+            'USING (tenant_id = app.current_tenant_id()) '
+            'WITH CHECK (tenant_id = app.current_tenant_id())', t);
     END LOOP;
 END
 $$;
+
+-- Tabel `tenants` DIKECUALIKAN dari RLS (ADR-0014): slug semi-publik dan
+-- wajib bisa di-resolve sebelum autentikasi (login by slug pre-auth).
+-- Idempoten: aman dijalankan ulang / setelah migrasi versi lama yang
+-- sempat memberi policy pada tabel ini.
+DROP POLICY IF EXISTS tenant_isolation ON tenants;
+ALTER TABLE tenants DISABLE ROW LEVEL SECURITY;
 
 -- Verifikasi cepat (opsional):
 --   SELECT tablename, rowsecurity FROM pg_tables WHERE schemaname='public';

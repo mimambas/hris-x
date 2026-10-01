@@ -1,7 +1,7 @@
 # Checklist Go-Live HRIS-X (Sprint 10)
 
-Tanggal: 2026-09-30. Status: **15/17 DONE (88%)** —
-2 item KNOWN LIMITATION yang jujur, bukan DONE palsu.
+Tanggal: 2026-09-30 (diperbarui 2026-10-01: item 13 RLS → DONE, terverifikasi live di Postgres staging). Status: **16/17 DONE (94%)** —
+1 item KNOWN LIMITATION yang jujur, bukan DONE palsu.
 
 ## 1. Environment variables
 
@@ -29,7 +29,7 @@ Tanggal: 2026-09-30. Status: **15/17 DONE (88%)** —
 
 | # | Item | Status | Catatan |
 |---|------|--------|---------|
-| 13 | RLS migration applied (Postgres) | **KNOWN LIMITATION** | `migrations/001_rls.sql` ada sejak Sprint 2, tapi **belum terverifikasi live** — tidak ada Postgres di environment ini. Isolasi tenant di SQLite/dev tetap di level aplikasi. Wajib dijalankan + `verify_rls.py` sebelum produksi Postgres. |
+| 13 | RLS migration applied (Postgres) | **DONE** | `migrations/001_rls.sql` dijalankan + `verify_rls.py` LULUS di Postgres staging (Neon, DB `hris_x_staging`) pada 2026-10-01: isolasi tenant terverifikasi, tabel `tenants` dikecualikan dari RLS (bootstrap login), role aplikasi `hrisx_sql` NOBYPASSRLS. E2E staging: login 200, headcount terbaca (RLS + `SET LOCAL` bekerja live). |
 | 14 | Backup DB | **KNOWN LIMITATION** | Prosedur backup/restore Postgres didokumentasikan di `docs/DEPLOYMENT.md`, tapi **jadwal backup harian + uji restore belum dijalankan** (butuh infra produksi). Target PRD NFR-014. |
 
 ## 4. Kualitas & dokumentasi

@@ -33,6 +33,7 @@ from sqlalchemy.orm import Session
 from app.api.v1.common import client_ip, snapshot
 from app.core.db import get_db
 from app.core.deps import get_current_user, require_permission
+from app.core.rls import set_request_tenant_id
 from app.models import (
     Candidate,
     Employment,
@@ -879,7 +880,11 @@ def send_offer(offer_id: uuid.UUID, request: Request,
                             "Hanya offer draft yang bisa dikirim")
     old = offer.status
     offer.status = "sent"
-    offer.offer_token = secrets.token_urlsafe(32)
+    # Format token: "<tenant_hex32>.<random>" — prefix tenant (32 char hex
+    # tanpa dash) memungkinkan endpoint publik accept mem-bootstrap RLS
+    # pre-auth; bagian random 256-bit menjaga token tetap tak tertebak
+    # (ADR-0014).
+    offer.offer_token = f"{user.tenant_id.hex}.{secrets.token_urlsafe(32)}"
     offer.sent_at = datetime.now(timezone.utc)
     db.flush()
     write_audit(db=db, tenant_id=user.tenant_id, actor_user_id=user.id,
@@ -965,6 +970,13 @@ def public_jobs(tenant: str = Query(...),
                 db: Session = Depends(get_db)):
     """Daftar lowongan published — TANPA auth. Tenant via ?tenant=<slug>."""
     t = _public_tenant(db, tenant)
+    # Publik tanpa auth: set tenant via contextvar SEBELUM query; handler
+    # after_begin menerapkan SET LOCAL otomatis. No-op untuk SQLite.
+    set_request_tenant_id(t.id)
+    # STAGING-FIX (2026-10-01): _public_tenant di atas sudah membuka
+    # transaksi; tanpa commit, query JobPosting berjalan di transaksi yang
+    # sama tanpa SET LOCAL → RLS mengembalikan 0 baris di Postgres.
+    db.commit()
     return db.execute(
         select(JobPosting)
         .where(JobPosting.tenant_id == t.id,
@@ -985,6 +997,14 @@ def accept_offer_public(token: str, body: AcceptOfferCreate,
                         request: Request, db: Session = Depends(get_db)):
     """Kandidat menerima offer via token — TANPA auth. Membuat Person +
     Employment + JobInfo (event 'hire')."""
+    # Bootstrap RLS pre-auth (ADR-0014): format token
+    # "<tenant_hex32>.<random>". Validasi ketat prefix sebagai UUID;
+    # gagal → 404 (tidak membocorkan apa pun).
+    try:
+        set_request_tenant_id(token.split(".", 1)[0])
+    except ValueError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND,
+                            "Tautan penawaran tidak valid")
     offer = db.execute(
         select(Offer).where(Offer.offer_token == token)
     ).scalar_one_or_none()
