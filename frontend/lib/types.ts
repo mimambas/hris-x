@@ -203,3 +203,30 @@ export interface OrgChartNode {
   legal_entity: OrgChartLegalEntity;
   children: OrgChartNode[];
 }
+
+export interface AttendanceRecord {
+  id: string;
+  employment_id: string;
+  date: string;
+  version: number;
+  check_in: string | null;
+  check_out: string | null;
+  source: string;
+  status: string; // "present" | "late" | "absent" | ...
+  late_minutes: number;
+  early_leave_minutes: number;
+  work_minutes: number;
+  correction_reason: string | null;
+}
+
+export interface AttendanceSummary {
+  period: string;
+  employment_id: string;
+  present: number;
+  late: number;
+  absent: number;
+  leave: number;
+  holiday: number;
+  total_work_minutes: number;
+  total_late_minutes: number;
+}

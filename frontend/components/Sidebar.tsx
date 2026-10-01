@@ -9,6 +9,7 @@ const NAV = [
   { href: "/karyawan", label: "Karyawan", icon: "👥" },
   { href: "/cuti", label: "Cuti", icon: "🌴" },
   { href: "/cuti/persetujuan", label: "Persetujuan Cuti", icon: "✅" },
+  { href: "/absensi", label: "Absensi", icon: "⏰" },
   { href: "/slip", label: "Slip Gaji", icon: "🧾" },
   { href: "/org", label: "Organisasi", icon: "🏢" },
 ];
