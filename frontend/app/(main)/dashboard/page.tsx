@@ -21,6 +21,69 @@ function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+// Nama bulan Bahasa Indonesia — <input type="month"> bawaan browser mengikuti
+// locale browser (bisa tampil "October 2026"), jadi pakai select manual.
+const BULAN_ID = [
+  "Januari",
+  "Februari",
+  "Maret",
+  "April",
+  "Mei",
+  "Juni",
+  "Juli",
+  "Agustus",
+  "September",
+  "Oktober",
+  "November",
+  "Desember",
+];
+
+function MonthYearSelect({
+  period,
+  onChange,
+}: {
+  period: string;
+  onChange: (period: string) => void;
+}) {
+  const [y, m] = period.split("-").map(Number);
+  const years: number[] = [];
+  const thisYear = new Date().getFullYear();
+  for (let yy = thisYear - 5; yy <= thisYear + 1; yy++) years.push(yy);
+  const set = (ny: number, nm: number) =>
+    onChange(`${ny}-${String(nm).padStart(2, "0")}`);
+  const selCls =
+    "rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-900";
+  return (
+    <span className="flex items-center gap-2 text-sm text-slate-600">
+      Periode turnover
+      <select
+        aria-label="Bulan"
+        className={selCls}
+        value={m}
+        onChange={(e) => set(y, Number(e.target.value))}
+      >
+        {BULAN_ID.map((nama, i) => (
+          <option key={nama} value={i + 1}>
+            {nama}
+          </option>
+        ))}
+      </select>
+      <select
+        aria-label="Tahun"
+        className={selCls}
+        value={y}
+        onChange={(e) => set(Number(e.target.value), m)}
+      >
+        {years.map((yy) => (
+          <option key={yy} value={yy}>
+            {yy}
+          </option>
+        ))}
+      </select>
+    </span>
+  );
+}
+
 function StatCard({
   label,
   value,
@@ -102,15 +165,7 @@ export default function DashboardPage() {
         title="Dasbor"
         subtitle={`Per ${tanggal(headcount?.as_of ?? asOf)}`}
         action={
-          <label className="flex items-center gap-2 text-sm text-slate-600">
-            Periode turnover
-            <input
-              type="month"
-              value={period}
-              onChange={(e) => e.target.value && setPeriod(e.target.value)}
-              className="rounded-md border border-slate-300 px-2 py-1.5 text-sm"
-            />
-          </label>
+          <MonthYearSelect period={period} onChange={(p) => setPeriod(p)} />
         }
       />
 
@@ -143,7 +198,7 @@ export default function DashboardPage() {
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={trendData} margin={{ left: -10, right: 10 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                <XAxis dataKey="label" tick={{ fontSize: 10 }} interval={0} angle={-25} dy={12} height={55} />
                 <YAxis tick={{ fontSize: 11 }} tickFormatter={(v: number) => `${v}%`} />
                 <Tooltip
                   formatter={(v: number) => [`${v}%`, "Turnover"]}
@@ -165,12 +220,12 @@ export default function DashboardPage() {
           </div>
         </Card>
 
-        <Card title="Karyawan per unit" subtitle="Breakdown headcount aktif">
+        <Card title="Karyawan per unit" subtitle="Rincian headcount aktif">
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={unitData} layout="vertical" margin={{ left: 20, right: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis type="number" tick={{ fontSize: 11 }} />
+                <XAxis type="number" tick={{ fontSize: 11 }} allowDecimals={false} />
                 <YAxis
                   type="category"
                   dataKey="name"

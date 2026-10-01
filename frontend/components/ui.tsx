@@ -170,3 +170,37 @@ export const btnDanger =
   "rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-60";
 export const btnSmall =
   "rounded-md px-2.5 py-1 text-xs font-medium disabled:opacity-60";
+
+// ---------------------------------------------------------------- Modal
+// Dialog konfirmasi di dalam aplikasi (pengganti window.confirm bawaan
+// browser yang rapuh: bisa diabaikan/diblokir dan tidak memberi umpan balik).
+export function Modal({
+  title,
+  children,
+  onClose,
+  actions,
+}: {
+  title: string;
+  children: ReactNode;
+  onClose: () => void;
+  actions: ReactNode;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+    >
+      <div
+        className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
+        <div className="mt-2 text-sm text-slate-600">{children}</div>
+        <div className="mt-6 flex justify-end gap-2">{actions}</div>
+      </div>
+    </div>
+  );
+}

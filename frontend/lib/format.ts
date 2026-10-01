@@ -26,6 +26,9 @@ export function persen(n: number | null | undefined, digits = 2): string {
 
 export function tanggal(iso: string | null | undefined): string {
   if (!iso) return "-";
+  // Sentinel effective-dating "masih berlaku" → tampilkan "Sekarang",
+  // bukan "31 Desember 9999" yang mentah.
+  if (iso.startsWith("9999")) return "Sekarang";
   const d = new Date(iso.length <= 10 ? `${iso}T00:00:00` : iso);
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleDateString("id-ID", {

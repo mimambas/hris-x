@@ -10,8 +10,11 @@ import {
   ErrorBox,
   EmptyState,
   StatusChip,
+  Modal,
   inputCls,
   btnSmall,
+  btnPrimary,
+  btnSecondary,
 } from "@/components/ui";
 
 interface Pending extends LeaveRequest {
@@ -25,8 +28,10 @@ export default function PersetujuanCutiPage() {
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState("");
+  const [approving, setApproving] = useState<Pending | null>(null);
 
   async function load() {
     setLoading(true);
@@ -67,10 +72,9 @@ export default function PersetujuanCutiPage() {
 
   async function approve(r: Pending) {
     const lvl = nextLevel(r);
-    const label = lvl === "l1" ? "level 1" : "level 2";
-    if (!confirm(`Setujui pengajuan cuti ${r.personName} (${label})?`)) return;
     setBusyId(r.id);
     setActionError(null);
+    setSuccessMsg(null);
     try {
       const updated = await apiFetch<LeaveRequest>(
         `/leave/requests/${r.id}/approve-${lvl}`,
@@ -81,10 +85,14 @@ export default function PersetujuanCutiPage() {
           x.id === r.id ? { ...x, ...updated } : x
         ).filter((x) => x.status === "submitted" || x.status === "approved_l1")
       );
+      setSuccessMsg(
+        `Pengajuan cuti ${r.personName} disetujui (${lvl === "l1" ? "level 1" : "level 2"}).`
+      );
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : "Gagal menyetujui.");
     } finally {
       setBusyId(null);
+      setApproving(null);
     }
   }
 
@@ -123,6 +131,12 @@ export default function PersetujuanCutiPage() {
       {actionError && (
         <div className="mb-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
           {actionError}
+        </div>
+      )}
+
+      {successMsg && (
+        <div className="mb-4 rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-800">
+          {successMsg}
         </div>
       )}
 
@@ -185,7 +199,11 @@ export default function PersetujuanCutiPage() {
                     ) : (
                       <div className="flex gap-2">
                         <button
-                          onClick={() => approve(r)}
+                          onClick={() => {
+                            setApproving(r);
+                            setActionError(null);
+                            setSuccessMsg(null);
+                          }}
                           disabled={busyId === r.id}
                           className={`${btnSmall} bg-green-600 text-white hover:bg-green-700`}
                         >
@@ -209,6 +227,38 @@ export default function PersetujuanCutiPage() {
             </tbody>
           </table>
         </div>
+      )}
+
+      {approving && (
+        <Modal
+          title="Setujui pengajuan cuti"
+          onClose={() => (busyId ? null : setApproving(null))}
+          actions={
+            <>
+              <button
+                onClick={() => setApproving(null)}
+                disabled={busyId !== null}
+                className={btnSecondary}
+              >
+                Batal
+              </button>
+              <button
+                onClick={() => approve(approving)}
+                disabled={busyId !== null}
+                className={btnPrimary}
+              >
+                {busyId ? "Memproses…" : "Ya, setujui"}
+              </button>
+            </>
+          }
+        >
+          <p>
+            Setujui pengajuan cuti <strong>{approving.personName}</strong> (
+            {approving.typeName}, {tanggal(approving.start_date)} s.d.{" "}
+            {tanggal(approving.end_date)},{" "}
+            {nextLevel(approving) === "l1" ? "level 1" : "level 2"})?
+          </p>
+        </Modal>
       )}
     </div>
   );

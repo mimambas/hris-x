@@ -220,8 +220,9 @@ export default function CutiPage() {
                 <li key={b.id} className="rounded-lg border border-slate-200 p-3 text-sm">
                   <p className="font-medium text-slate-900">{typeName(b.leave_type_id)}</p>
                   <p className="mt-1 text-slate-600">
-                    Sisa <span className="font-semibold text-brand-700">{b.remaining}</span>{" "}
-                    dari {b.entitled} hari · terpakai {b.used}
+                    {`Sisa `}
+                    <span className="font-semibold text-brand-700">{b.remaining}</span>
+                    {` dari ${b.entitled} hari · terpakai ${b.used}`}
                   </p>
                 </li>
               ))}

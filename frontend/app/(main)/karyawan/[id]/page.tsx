@@ -199,7 +199,7 @@ export default function KaryawanDetailPage() {
                   <li key={j.id} className="rounded-lg border border-slate-200 p-3 text-sm">
                     <p className="font-medium text-slate-900">{j.event}</p>
                     <p className="mt-0.5 text-xs text-slate-500">
-                      {tanggal(j.valid_from)} s.d. {tanggal(j.valid_to)}
+                      {`${tanggal(j.valid_from)} s.d. ${tanggal(j.valid_to)}`}
                     </p>
                     {j.event_reason && (
                       <p className="mt-1 text-xs text-slate-600">{j.event_reason}</p>
@@ -224,7 +224,7 @@ export default function KaryawanDetailPage() {
                     <p className="font-medium text-slate-900">{v.contract_type}</p>
                     <p className="text-xs text-slate-500">No. {v.contract_number}</p>
                     <p className="mt-1 text-xs text-slate-600">
-                      {tanggal(v.valid_from)} s.d. {tanggal(v.valid_to)}
+                      {`${tanggal(v.valid_from)} s.d. ${tanggal(v.valid_to)}`}
                     </p>
                   </div>
                 ))}
