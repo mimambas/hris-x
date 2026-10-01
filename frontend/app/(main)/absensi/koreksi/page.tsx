@@ -7,7 +7,7 @@ import type {
   Employment,
   Person,
 } from "@/lib/types";
-import { tanggal, tanggalWaktu } from "@/lib/format";
+import { tanggal, tanggalWaktuLokal, parseWaktuLokal } from "@/lib/format";
 import {
   PageHeader,
   Card,
@@ -25,7 +25,9 @@ function todayISO(): string {
 
 function toLocalInput(iso: string | null): string {
   if (!iso) return "";
-  const d = new Date(iso);
+  // Backend menyimpan waktu lokal-naif (ADR-0008): tampilkan sebagai
+  // wall-clock tanpa konversi zona waktu.
+  const d = parseWaktuLokal(iso);
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(
     d.getHours()
@@ -34,8 +36,10 @@ function toLocalInput(iso: string | null): string {
 
 function fromLocalInput(v: string): string | null {
   if (!v) return null;
-  const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+  // Input datetime-local "YYYY-MM-DDTHH:mm" sudah berupa waktu lokal-naif;
+  // kirim apa adanya (tanpa toISOString()) sesuai konvensi backend.
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(v)) return null;
+  return `${v}:00`;
 }
 
 interface Option {
@@ -67,11 +71,16 @@ export default function KoreksiAbsensiPage() {
           apiFetch<Employment[]>("/employments"),
         ]);
         const personById = new Map(persons.map((p) => [p.id, p]));
+        // Hanya tawarkan employment yang person-nya terlihat oleh user
+        // (daftar /persons sudah menghormati target population). Ini
+        // mencegah opsi berlabel rusak sekaligus opsi yang pasti ditolak
+        // 403 oleh RBP backend.
+        const visiblePersonIds = new Set(persons.map((p) => p.id));
         const opts = emps
-          .filter((e) => e.status === "active")
+          .filter((e) => e.status === "active" && visiblePersonIds.has(e.person_id))
           .map((e) => ({
             employmentId: e.id,
-            name: personById.get(e.person_id)?.full_name ?? e.id.slice(0, 8),
+            name: personById.get(e.person_id)?.full_name ?? "Tanpa nama",
           }))
           .sort((a, b) => a.name.localeCompare(b.name, "id"));
         setOptions(opts);
@@ -228,8 +237,8 @@ export default function KoreksiAbsensiPage() {
                 </p>
                 <p className="mt-1 text-slate-600">
                   Tercatat: masuk{" "}
-                  {record.check_in ? tanggalWaktu(record.check_in) : "-"} ·
-                  keluar {record.check_out ? tanggalWaktu(record.check_out) : "-"}
+                  {record.check_in ? tanggalWaktuLokal(record.check_in) : "-"} ·
+                  keluar {record.check_out ? tanggalWaktuLokal(record.check_out) : "-"}
                 </p>
                 {record.correction_reason && (
                   <p className="mt-1 text-xs text-slate-400">

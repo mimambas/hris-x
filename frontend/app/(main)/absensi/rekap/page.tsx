@@ -123,11 +123,16 @@ export default function RekapAbsensiPage() {
           apiFetch<Employment[]>("/employments"),
         ]);
         const personById = new Map(persons.map((p) => [p.id, p]));
+        // Hanya tawarkan employment yang person-nya terlihat oleh user
+        // (daftar /persons sudah menghormati target population). Ini
+        // mencegah opsi berlabel rusak sekaligus opsi yang pasti ditolak
+        // 403 oleh RBP backend.
+        const visiblePersonIds = new Set(persons.map((p) => p.id));
         const opts = emps
-          .filter((e) => e.status === "active")
+          .filter((e) => e.status === "active" && visiblePersonIds.has(e.person_id))
           .map((e) => ({
             employmentId: e.id,
-            name: personById.get(e.person_id)?.full_name ?? e.id.slice(0, 8),
+            name: personById.get(e.person_id)?.full_name ?? "Tanpa nama",
           }))
           .sort((a, b) => a.name.localeCompare(b.name, "id"));
         setOptions(opts);

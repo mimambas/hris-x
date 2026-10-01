@@ -6,9 +6,10 @@ import { apiFetch, ApiError } from "@/lib/api";
 import type {
   AttendanceRecord,
   Employment,
+  Me,
   Person,
 } from "@/lib/types";
-import { tanggal, tanggalWaktu, angka } from "@/lib/format";
+import { tanggal, tanggalWaktu, jamLokal, nowNaiveLocalISO, angka } from "@/lib/format";
 import {
   PageHeader,
   Card,
@@ -49,12 +50,6 @@ function AttendanceChip({ status }: { status: string }) {
   );
 }
 
-function jam(iso: string | null): string {
-  if (!iso) return "-";
-  const d = new Date(iso);
-  return d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
-}
-
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -86,18 +81,22 @@ export default function AbsensiPage() {
     setNotice(null);
     try {
       const [me, persons, emps] = await Promise.all([
-        apiFetch<{ email: string }>("/me"),
+        apiFetch<Me>("/me"),
         apiFetch<Person[]>("/persons"),
         apiFetch<Employment[]>("/employments"),
       ]);
       const personById = new Map(persons.map((p) => [p.id, p]));
       const active = emps.filter((e) => e.status === "active");
-      // Employment milik user (untuk check-in/out sendiri).
-      const mePerson = persons.find(
-        (p) => (p.email ?? "").toLowerCase() === me.email.toLowerCase()
-      );
+      // Employment milik user (untuk check-in/out sendiri): pakai tautan
+      // person_id yang otoritatif; fallback ke pencocokan email bila person
+      // belum tertaut ke user.
+      const mePersonId =
+        me.person_id ??
+        persons.find(
+          (p) => (p.email ?? "").toLowerCase() === me.email.toLowerCase()
+        )?.id;
       const mine = active.find(
-        (e) => mePerson && e.person_id === mePerson.id
+        (e) => mePersonId != null && e.person_id === mePersonId
       );
       setMyEmploymentId(mine?.id ?? "");
 
@@ -174,6 +173,9 @@ export default function AbsensiPage() {
           method: "POST",
           body: JSON.stringify({
             employment_id: myEmploymentId,
+            // Kirim waktu lokal-naif (konvensi backend, ADR-0008) agar jam
+            // yang tercatat & dihitung sama dengan jam dinding pengguna.
+            at: nowNaiveLocalISO(),
             source: "web",
           }),
         }
@@ -181,8 +183,8 @@ export default function AbsensiPage() {
       setMyRecord(rec);
       setNotice(
         kind === "in"
-          ? `Check-in tercatat pukul ${jam(rec.check_in)}.`
-          : `Check-out tercatat pukul ${jam(rec.check_out)}.`
+          ? `Check-in tercatat pukul ${jamLokal(rec.check_in)}.`
+          : `Check-out tercatat pukul ${jamLokal(rec.check_out)}.`
       );
       await load();
     } catch (err) {
@@ -229,11 +231,11 @@ export default function AbsensiPage() {
               </div>
               <div className="flex items-center justify-between text-sm">
                 <span className="text-slate-500">Jam masuk</span>
-                <span className="font-medium">{jam(myRecord?.check_in ?? null)}</span>
+                <span className="font-medium">{jamLokal(myRecord?.check_in ?? null)}</span>
               </div>
               <div className="flex items-center justify-between text-sm">
                 <span className="text-slate-500">Jam keluar</span>
-                <span className="font-medium">{jam(myRecord?.check_out ?? null)}</span>
+                <span className="font-medium">{jamLokal(myRecord?.check_out ?? null)}</span>
               </div>
               {myRecord && myRecord.late_minutes > 0 && (
                 <p className="text-sm text-amber-700">
@@ -338,10 +340,10 @@ export default function AbsensiPage() {
                           {r.name}
                         </td>
                         <td className="py-2 pr-3 text-slate-600">
-                          {r.record ? jam(r.record.check_in) : "-"}
+                          {r.record ? jamLokal(r.record.check_in) : "-"}
                         </td>
                         <td className="py-2 pr-3 text-slate-600">
-                          {r.record ? jam(r.record.check_out) : "-"}
+                          {r.record ? jamLokal(r.record.check_out) : "-"}
                         </td>
                         <td className="py-2 pr-3">
                           <AttendanceChip status={r.record?.status ?? "absent"} />

@@ -210,6 +210,53 @@ def test_correct_requires_reason_and_versions(client, ctx):
     assert len(rows) == 1 and rows[0]["version"] == 2
 
 
+def test_correct_partial_with_aware_datetimes_like_postgres(client, ctx):
+    """Regresi Defect 2 UAT: di Postgres, check_in/check_out terbaca sebagai
+    datetime aware (kolom timestamptz), sedangkan jam shift naive. Koreksi
+    parsial (hanya alasan, atau hanya salah satu jam) tidak boleh TypeError
+    (yang di staging menjadi 500 + pesan "Tidak dapat terhubung ke server")."""
+    import uuid as _uuid
+    from datetime import datetime, timezone
+
+    from app.models import AttendanceRecord
+
+    h = ah(client)
+    _, e = _mk_employee(client, h, ctx, "Koreksi Aware Uji")
+    client.post("/api/v1/shift-assignments", headers=h, json={
+        "employment_id": e["id"], "shift_id": _seed_shifts(ctx)["pagi"],
+        "valid_from": "2024-01-01", "reason": "uji"})
+    r = _checkin(client, h, e["id"], "2026-11-03T08:10:00")
+    assert r.status_code == 201, r.text
+    r = _checkout(client, h, e["id"], "2026-11-03T17:05:00")
+    assert r.status_code == 200, r.text
+    rec_id = _uuid.UUID(r.json()["id"])
+
+    db = ctx["db"]
+    # Simulasikan pembacaan Postgres: kolom timestamptz -> aware.
+    rec = db.get(AttendanceRecord, rec_id)
+    rec.check_in = rec.check_in.replace(tzinfo=timezone.utc)
+    rec.check_out = rec.check_out.replace(tzinfo=timezone.utc)
+    db.flush()
+
+    # Koreksi hanya alasan: jam diambil dari record lama (aware).
+    new = att_service.correct_record(
+        db=db, tenant_id=ctx["ta"].id, record_id=rec_id,
+        reason="Koreksi alasan saja")
+    assert new.version == 2
+    assert new.check_in == datetime(2026, 11, 3, 8, 10)
+    assert new.late_minutes == 0
+    db.commit()
+
+    # Koreksi hanya check_out: check_in diambil dari versi sebelumnya.
+    new2 = att_service.correct_record(
+        db=db, tenant_id=ctx["ta"].id, record_id=new.id,
+        check_out=datetime(2026, 11, 3, 16, 30), reason="Pulang cepat")
+    assert new2.version == 3
+    assert new2.check_in == datetime(2026, 11, 3, 8, 10)
+    assert new2.early_leave_minutes == 30
+    db.commit()
+
+
 def test_summary_counts_present_late_absent(client, ctx):
     h = ah(client)
     _, e = _mk_employee(client, h, ctx, "Rekap Uji")

@@ -232,7 +232,7 @@ def correct_attendance(
                             if new.check_in else None,
                             "check_out": new.check_out.isoformat()
                             if new.check_out else None},
-                reason=body.reason, channel="attendance_correction",
+                reason=body.reason, channel="api",
                 ip=client_ip(request))
     db.commit()
     return _record_out(new)

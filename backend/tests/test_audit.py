@@ -96,3 +96,24 @@ def test_login_juga_diaudit(client, ctx):
     logs = client.get("/api/v1/audit-logs",
                       params={"object_type": "user"}, headers=h).json()
     assert any(l["action"] == "login" for l in logs)
+
+
+def test_channel_literal_muat_di_kolom_db():
+    """Regresi Defect 2 UAT: SQLite tidak menegakkan panjang VARCHAR sehingga
+    channel="attendance_correction" (21 char) lolos test tapi 500 di Postgres
+    (kolom channel VARCHAR(20)). Pastikan semua literal channel muat."""
+    import pathlib
+    import re
+
+    from app.models import AuditLog
+
+    max_len = AuditLog.__table__.c.channel.type.length
+    assert max_len == 20
+    api_dir = pathlib.Path(__file__).resolve().parent.parent / "app" / "api"
+    bad = []
+    for py in api_dir.rglob("*.py"):
+        for i, line in enumerate(py.read_text().splitlines(), 1):
+            for m in re.finditer(r'channel="([^"]*)"', line):
+                if len(m.group(1)) > max_len:
+                    bad.append(f"{py.name}:{i}: {m.group(1)!r}")
+    assert not bad, f"channel melebihi VARCHAR({max_len}): {bad}"

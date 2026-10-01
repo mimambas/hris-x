@@ -15,6 +15,7 @@ export interface Me {
   full_name: string;
   is_superadmin: boolean;
   roles: string[];
+  person_id: string | null;
 }
 
 export interface Person {

@@ -8,6 +8,7 @@ import type {
   LeaveRequest,
   LeaveType,
   LeaveBalance,
+  Me,
   Person,
   Employment,
 } from "@/lib/types";
@@ -49,18 +50,24 @@ export default function CutiPage() {
       const [lt, reqs, me, persons, emps] = await Promise.all([
         apiFetch<LeaveType[]>("/leave/types"),
         apiFetch<LeaveRequest[]>("/leave/requests"),
-        apiFetch<{ email: string }>("/me"),
+        apiFetch<Me>("/me"),
         apiFetch<Person[]>("/persons"),
         apiFetch<Employment[]>("/employments"),
       ]);
       setTypes(lt.filter((t) => t.is_active));
       setRequests(reqs);
-      // Cari employment milik user lewat kecocokan email person.
-      const person = persons.find(
-        (p) => (p.email ?? "").toLowerCase() === me.email.toLowerCase()
-      );
+      // Cari employment milik user: pakai tautan person_id yang otoritatif,
+      // fallback ke pencocokan email bila person belum tertaut ke user.
+      const mePersonId =
+        me.person_id ??
+        persons.find(
+          (p) => (p.email ?? "").toLowerCase() === me.email.toLowerCase()
+        )?.id;
       const mine = emps.filter(
-        (e) => person && e.person_id === person.id && e.status === "active"
+        (e) =>
+          mePersonId != null &&
+          e.person_id === mePersonId &&
+          e.status === "active"
       );
       const chosen = mine[0]?.id ?? emps[0]?.id ?? "";
       setEmploymentId(chosen);

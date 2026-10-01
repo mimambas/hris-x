@@ -44,6 +44,7 @@ class MeResponse(BaseModel):
     full_name: str
     is_superadmin: bool
     roles: list[str]
+    person_id: uuid.UUID | None = None  # tautan user -> person (dipakai lookup employment di frontend)
 
 
 class ChangePasswordRequest(BaseModel):

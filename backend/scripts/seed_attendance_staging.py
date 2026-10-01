@@ -85,7 +85,11 @@ def weekdays_sept_2026():
 
 
 def checkout(emp_id, iso, jam_pulang, token):
-    """Check-out; anggap sukses bila 200/201 atau 422 'sudah check-out'."""
+    """Check-out; anggap sukses bila 200/201 atau 422 'sudah check-out'.
+
+    Jam dikirim sebagai waktu lokal-naif (tanpa offset, konvensi ADR-0008):
+    "2026-09-01T17:05:00" berarti 17:05 waktu lokasi kerja.
+    """
     sc, body = call("POST", "/attendance/check-out", token, {
         "employment_id": emp_id,
         "at": f"{iso}T{jam_pulang}:00", "source": "web"})

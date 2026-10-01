@@ -157,6 +157,11 @@ def _naive(at: datetime) -> datetime:
     return at
 
 
+def _naive_or_none(at: datetime | None) -> datetime | None:
+    """Varian `_naive` yang aman untuk nilai None."""
+    return _naive(at) if at is not None else None
+
+
 def _current_record(
     db: Session, tenant_id, employment_id, day: date
 ) -> AttendanceRecord | None:
@@ -246,8 +251,12 @@ def correct_record(
         raise KeyError("Record absensi tidak ditemukan")
     if not old.is_current:
         raise ValueError("Hanya versi terkini yang bisa dikoreksi")
-    new_check_in = _naive(check_in) if check_in else old.check_in
-    new_check_out = _naive(check_out) if check_out else old.check_out
+    # Di Postgres, `old.check_in`/`old.check_out` terbaca sebagai datetime
+    # aware (kolom timestamptz), sedangkan jam shift adalah naive (waktu
+    # lokal). Samakan ke naive agar perbandingan tidak TypeError (500)
+    # saat koreksi hanya mengubah salah satunya.
+    new_check_in = _naive(check_in) if check_in else _naive_or_none(old.check_in)
+    new_check_out = _naive(check_out) if check_out else _naive_or_none(old.check_out)
     # Hitung ulang keterlambatan/pulang-cepat dari jam yang dikoreksi
     # memakai shift yang berlaku pada tanggal record.
     shift, start_dt, end_dt = get_shift_for(

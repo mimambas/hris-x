@@ -51,6 +51,52 @@ export function tanggalWaktu(iso: string | null | undefined): string {
   });
 }
 
+// --- Waktu lokal-naif (konvensi backend, ADR-0008) ---
+//
+// Backend menyimpan datetime absensi sebagai "waktu lokal-naif" (zona waktu
+// lokasi kerja); kolom timestamptz Postgres mengembalikannya dengan offset
+// UTC (mis. "2026-09-01T08:05:00Z" padahal maksudnya 08:05 WIB). Fungsi di
+// bawah mem-parse sebagai wall-clock TANPA konversi zona waktu, agar jam
+// yang tampil sama dengan yang dicatat. JANGAN dipakai untuk kolom yang
+// memang menyimpan momen absolut (mis. created_at) — untuk itu pakai
+// tanggalWaktu() biasa.
+export function parseWaktuLokal(iso: string): Date {
+  const tanpaOffset = iso.replace(/(Z|[+-]\d{2}:?\d{2})$/, "");
+  return new Date(
+    tanpaOffset.length <= 10 ? `${tanpaOffset}T00:00:00` : tanpaOffset
+  );
+}
+
+export function jamLokal(iso: string | null | undefined): string {
+  if (!iso) return "-";
+  const d = parseWaktuLokal(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+}
+
+export function tanggalWaktuLokal(iso: string | null | undefined): string {
+  if (!iso) return "-";
+  const d = parseWaktuLokal(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("id-ID", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+// ISO "waktu lokal-naif" untuk dikirim ke backend (tanpa offset zona waktu).
+export function nowNaiveLocalISO(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return (
+    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
+    `T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+  );
+}
+
 // "2026-09" → "September 2026"
 export function namaBulan(period: string): string {
   const m = /^(\d{4})-(\d{2})$/.exec(period);
