@@ -231,3 +231,118 @@ export interface AttendanceSummary {
   total_work_minutes: number;
   total_late_minutes: number;
 }
+
+// ---------------------------------------------------------------- Rekrutmen (Sprint 6)
+
+export interface OrgUnit {
+  id: string;
+  legal_entity_id: string;
+  parent_id: string | null;
+  name: string;
+}
+
+export interface Job {
+  id: string;
+  code: string;
+  title: string;
+}
+
+export interface Location {
+  id: string;
+  name: string;
+  timezone: string;
+}
+
+export interface LegalEntity {
+  id: string;
+  name: string;
+  npwp: string | null;
+}
+
+export interface Requisition {
+  id: string;
+  org_unit_id: string;
+  job_title: string;
+  headcount: number;
+  reason: string | null;
+  status: string; // "draft" | "submitted" | "approved" | "rejected"
+}
+
+export interface JobPosting {
+  id: string;
+  requisition_id: string;
+  title: string;
+  description: string | null;
+  requirements: string | null;
+  employment_type: string;
+  location: string | null;
+  status: string; // "draft" | "published" | "closed"
+  published_at: string | null;
+  closed_at: string | null;
+}
+
+export interface PublicJob {
+  id: string;
+  title: string;
+  description: string | null;
+  requirements: string | null;
+  employment_type: string;
+  location: string | null;
+  published_at: string | null;
+}
+
+export interface Candidate {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  cv_file_path: string | null;
+  source: string;
+}
+
+export interface JobApplication {
+  id: string;
+  posting_id: string;
+  candidate_id: string;
+  status: string; // applied|screening|interview|offering|hired|rejected|withdrawn
+  applied_at: string;
+}
+
+export interface Interview {
+  id: string;
+  application_id: string;
+  scheduled_at: string;
+  interviewer_ids: string[];
+  location: string | null;
+  mode: string; // "onsite" | "online"
+  status: string; // "scheduled" | "completed" | "cancelled"
+}
+
+export interface InterviewFeedback {
+  id: string;
+  interview_id: string;
+  interviewer_id: string;
+  score: number;
+  notes: string | null;
+  recommendation: string; // "hire" | "no_hire" | "consider"
+}
+
+export interface Offer {
+  id: string;
+  application_id: string;
+  salary: number;
+  start_date: string;
+  contract_type: string;
+  expires_at: string;
+  status: string; // "draft" | "sent" | "accepted" | "declined" | "expired"
+  offer_token: string | null;
+}
+
+export interface AcceptOfferResult {
+  person_id: string;
+  employment_id: string;
+  job_info_id: string;
+  nik: string;
+  full_name: string;
+  start_date: string;
+}

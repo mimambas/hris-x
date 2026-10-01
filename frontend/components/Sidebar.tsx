@@ -10,6 +10,8 @@ const NAV = [
   { href: "/cuti", label: "Cuti", icon: "🌴" },
   { href: "/cuti/persetujuan", label: "Persetujuan Cuti", icon: "✅" },
   { href: "/absensi", label: "Absensi", icon: "⏰" },
+  { href: "/rekrutmen/lowongan", label: "Rekrutmen", icon: "💼" },
+  { href: "/rekrutmen/kandidat", label: "Kandidat", icon: "🧑‍💼" },
   { href: "/slip", label: "Slip Gaji", icon: "🧾" },
   { href: "/org", label: "Organisasi", icon: "🏢" },
 ];

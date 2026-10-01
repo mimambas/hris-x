@@ -97,3 +97,44 @@ export async function apiDownload(path: string, filename: string): Promise<void>
   a.remove();
   URL.revokeObjectURL(url);
 }
+
+// Base URL API untuk halaman yang butuh fetch mentah (mis. halaman publik
+// tanpa redirect login otomatis).
+export function getApiBase(): string {
+  return BASE;
+}
+
+// Unggah berkas multipart (mis. CV kandidat). Tidak memakai
+// Content-Type: application/json agar browser mengisi boundary sendiri.
+export async function apiUpload<T>(path: string, file: File): Promise<T> {
+  const token = getToken();
+  const form = new FormData();
+  form.append("file", file);
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${path}`, { method: "POST", body: form, headers });
+  } catch {
+    throw new ApiError(0, "Tidak dapat terhubung ke server. Periksa koneksi Anda.");
+  }
+
+  if (res.status === 401) {
+    clearAuth();
+    if (typeof window !== "undefined") window.location.href = "/login";
+    throw new ApiError(401, friendlyMessage(401, null));
+  }
+
+  if (!res.ok) {
+    let detail: unknown = null;
+    try {
+      const body = await res.json();
+      detail = body?.detail ?? null;
+    } catch {
+      /* abaikan */
+    }
+    throw new ApiError(res.status, friendlyMessage(res.status, detail));
+  }
+  return (await res.json()) as T;
+}
