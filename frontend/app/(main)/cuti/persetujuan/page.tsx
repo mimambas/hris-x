@@ -1,5 +1,6 @@
 "use client";
 
+import { useAuth } from "@/components/AuthContext";
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch, ApiError } from "@/lib/api";
 import type { LeaveRequest, LeaveType, Person, Employment } from "@/lib/types";
@@ -23,6 +24,9 @@ interface Pending extends LeaveRequest {
 }
 
 export default function PersetujuanCutiPage() {
+  const { user } = useAuth();
+  // Approval final (L2) hanya boleh oleh HR; manajer hanya melihat status.
+  const isHr = user?.is_hr ?? user?.is_superadmin ?? false;
   const [items, setItems] = useState<Pending[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -198,17 +202,23 @@ export default function PersetujuanCutiPage() {
                       </div>
                     ) : (
                       <div className="flex gap-2">
-                        <button
-                          onClick={() => {
-                            setApproving(r);
-                            setActionError(null);
-                            setSuccessMsg(null);
-                          }}
-                          disabled={busyId === r.id}
-                          className={`${btnSmall} bg-green-600 text-white hover:bg-green-700`}
-                        >
-                          {busyId === r.id ? "…" : `Setujui${nextLevel(r) === "l1" ? " L1" : " L2"}`}
-                        </button>
+                        {nextLevel(r) === "l2" && !isHr ? (
+                          <span className="text-xs text-slate-500">
+                            Menunggu persetujuan HR
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              setApproving(r);
+                              setActionError(null);
+                              setSuccessMsg(null);
+                            }}
+                            disabled={busyId === r.id}
+                            className={`${btnSmall} bg-green-600 text-white hover:bg-green-700`}
+                          >
+                            {busyId === r.id ? "…" : `Setujui${nextLevel(r) === "l1" ? " L1" : " L2"}`}
+                          </button>
+                        )}
                         <button
                           onClick={() => {
                             setRejectingId(r.id);

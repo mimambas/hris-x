@@ -16,6 +16,7 @@ export interface Me {
   is_superadmin: boolean;
   roles: string[];
   person_id: string | null;
+  is_hr: boolean; // boleh approve final (L2 cuti/lembur, final klaim, approve pinjaman)
 }
 
 export interface Person {

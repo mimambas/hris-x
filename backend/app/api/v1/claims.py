@@ -277,7 +277,7 @@ def approve_l1(
 
 
 @router.post("/claims/{claim_id}/approve",
-             dependencies=[Depends(require_permission(OBJECT, "correct"))])
+             dependencies=[Depends(require_permission("payroll", "correct"))])
 def approve_final(
     claim_id: uuid.UUID, body: ClaimDecision, request: Request,
     user: User = Depends(get_current_user), db: Session = Depends(get_db),
@@ -289,7 +289,7 @@ def approve_final(
         claims_service.approve_final(
             db=db, tenant_id=user.tenant_id, claim_id=claim.id,
             approver_user=user, approver_employment_id=own,
-            can_approve=_is_hr(db, user))
+            can_approve=rbp_service.is_hr(db, user))
     except (KeyError, ValueError) as e:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e))
     _audit(db, user, request, claim, "approve", old_status,
@@ -346,7 +346,7 @@ def mark_paid(
     user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ):
     claim = _claim_or_404(db, user, claim_id)
-    if not _is_hr(db, user):
+    if not rbp_service.is_hr(db, user):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
                             "Tandai dibayar hanya oleh HR/Finance")
     old_status = claim.status

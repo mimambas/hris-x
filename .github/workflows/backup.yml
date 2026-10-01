@@ -1,0 +1,47 @@
+# Backup database harian (pg_dump) -> artifact GitHub Actions.
+#
+# Syarat sekali saja: tambahkan secret repo bernama DATABASE_URL_BACKUP
+# (Settings -> Secrets and variables -> Actions) berisi connection string
+# Neon dengan akses baca (gunakan direct connection, bukan pooler).
+# Tanpa secret ini workflow gagal dengan pesan yang jelas — tidak ada
+# yang bocor ke log.
+#
+# 100% gratis: GitHub Actions free tier mencakup public repo tanpa batas
+# menit; artifact disimpan 30 hari.
+
+name: Backup database harian
+
+on:
+  schedule:
+    - cron: "0 18 * * *" # 01:00 WIB setiap hari
+  workflow_dispatch: # tombol "Run workflow" manual
+
+jobs:
+  pgdump:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Cek secret tersedia
+        run: |
+          if [ -z "${{ secrets.DATABASE_URL_BACKUP }}" ]; then
+            echo "::error::Secret DATABASE_URL_BACKUP belum diset. Lihat komentar di atas workflow ini."
+            exit 1
+          fi
+
+      - name: pg_dump terkompresi
+        env:
+          DATABASE_URL_BACKUP: ${{ secrets.DATABASE_URL_BACKUP }}
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
+          STAMP=$(date +%Y%m%d-%H%M)
+          pg_dump "$DATABASE_URL_BACKUP" --no-owner --no-privileges --format=custom \
+            -f "hrisx-db-${STAMP}.dump"
+          gzip "hrisx-db-${STAMP}.dump"
+          ls -lh "hrisx-db-${STAMP}.dump.gz"
+
+      - name: Upload artifact (retensi 30 hari)
+        uses: actions/upload-artifact@v4
+        with:
+          name: hrisx-db-backup
+          path: hrisx-db-*.dump.gz
+          retention-days: 30

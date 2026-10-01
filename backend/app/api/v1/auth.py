@@ -153,6 +153,7 @@ def me(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
         is_superadmin=user.is_superadmin,
         roles=[r.name for r in roles],
         person_id=user.person_id,
+        is_hr=rbp_service.is_hr(db, user),
     )
 
 

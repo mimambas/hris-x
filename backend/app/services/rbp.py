@@ -169,3 +169,15 @@ def has_permission(db: Session, user, object_name: str, action: str) -> bool:
         if any(getattr(p, flag) for p in perms):
             return True
     return False
+
+
+def is_hr(db: Session, user) -> bool:
+    """True bila user adalah HR: superadmin atau pemegang izin payroll:correct.
+
+    Dipakai sebagai gate tunggal untuk approval FINAL (cuti/lembur L2,
+    approve final klaim, approve pinjaman). Izin "correct" per-objek TIDAK
+    boleh dipakai untuk final karena manajer juga memegangnya (dibutuhkan
+    untuk antrean persetujuan L1) — celah ini pernah memungkinkan manajer
+    melakukan approve final lembur (2026-10-01).
+    """
+    return user.is_superadmin or has_permission(db, user, "payroll", "correct")

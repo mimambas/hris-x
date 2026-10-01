@@ -60,6 +60,7 @@ def create_app(database_url: str | None = None) -> FastAPI:
             allow_methods=["*"],
             allow_headers=["*"],
             allow_credentials=True,
+            expose_headers=["Content-Disposition"],
         )
 
     # RLS request-context (ADR-0014): reset ContextVar tenant di awal &

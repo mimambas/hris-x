@@ -14,7 +14,6 @@ import re
 import secrets
 import uuid
 from datetime import date, datetime, timezone
-from pathlib import Path
 
 from fastapi import (
     APIRouter,
@@ -26,7 +25,7 @@ from fastapi import (
     UploadFile,
     status,
 )
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -75,6 +74,7 @@ from app.schemas.schemas import (
     RequisitionOut,
 )
 from app.services import effective_dating as ed
+from app.services import storage as storage_service
 from app.services import population as population_service
 from app.services import rbp as rbp_service
 from app.services.audit import write_audit
@@ -82,7 +82,6 @@ from app.services.offer_letter import render_offer_letter_pdf
 
 router = APIRouter(tags=["recruitment"])
 
-UPLOAD_DIR = Path(__file__).resolve().parent.parent.parent / "uploads"
 MAX_FILE_BYTES = 10 * 1024 * 1024
 ALLOWED_EXT = {".pdf", ".jpg", ".jpeg", ".png", ".doc", ".docx"}
 
@@ -498,12 +497,10 @@ def upload_cv(candidate_id: uuid.UUID, request: Request,
         raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                             f"Berkas melebihi batas {MAX_FILE_BYTES // 1024 // 1024} MB")
     safe_name = re.sub(r"[^a-zA-Z0-9._-]", "_", original) or "cv"
-    stored = f"cv_{uuid.uuid4().hex}_{safe_name}"
-    tenant_dir = UPLOAD_DIR / str(user.tenant_id)
-    tenant_dir.mkdir(parents=True, exist_ok=True)
-    (tenant_dir / stored).write_bytes(data)
     old_path = cand.cv_file_path
-    cand.cv_file_path = str(Path(str(user.tenant_id)) / stored)
+    cand.cv_file_path = storage_service.get_storage().save(
+        str(user.tenant_id), f"cv_{safe_name}", data, "application/pdf"
+    )
     db.flush()
     write_audit(db=db, tenant_id=user.tenant_id, actor_user_id=user.id,
                 action="update", object_type="candidate", object_id=cand.id,
@@ -523,10 +520,17 @@ def download_cv(candidate_id: uuid.UUID, user: User = Depends(get_current_user),
     cand = _tenant_row(db, user, Candidate, candidate_id, "Kandidat")
     if not cand.cv_file_path:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "CV belum diunggah")
-    path = UPLOAD_DIR / cand.cv_file_path
-    if not path.is_file():
+    try:
+        content = storage_service.load_key(cand.cv_file_path)
+    except FileNotFoundError:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Berkas tidak ditemukan")
-    return FileResponse(path, filename=f"cv_{cand.name}.pdf")
+    return Response(
+        content=content,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="cv_{cand.name}.pdf"'
+        },
+    )
 
 
 # ================================================================ Application

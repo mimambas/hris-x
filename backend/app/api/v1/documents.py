@@ -1,16 +1,16 @@
 """Dokumen karyawan (CHR-012 dasar, tanpa e-sign).
 
 Upload berversi per (person/employment, doc_type): versi lama tetap
-tersimpan (is_current=False). Berkas disimpan di <backend>/uploads/
-(ditentukan di .gitignore). Unduh & daftar memakai pemeriksaan RBP +
-target population seperti endpoint person.
+tersimpan (is_current=False). Berkas disimpan lewat abstraksi
+``app.services.storage`` (default filesystem lokal; dapat dialihkan ke
+Cloudinary via env ``STORAGE_BACKEND``). Unduh & daftar memakai pemeriksaan
+RBP + target population seperti endpoint person.
 """
 
 from __future__ import annotations
 
 import re
 import uuid
-from pathlib import Path
 
 from fastapi import (
     APIRouter,
@@ -23,30 +23,22 @@ from fastapi import (
     UploadFile,
     status,
 )
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.v1.common import client_ip
 from app.core.db import get_db
-from app.core.config import get_upload_dir
 from app.core.deps import get_current_user, require_permission
 from app.models import DOCUMENT_TYPES, Document, Employment, Person, User
 from app.schemas.schemas import DocumentOut
 from app.services import population as pop_service
+from app.services import storage as storage_service
 from app.services.audit import write_audit
 
 router = APIRouter(tags=["documents"])
 
 
-def _upload_dir() -> Path:
-    base = get_upload_dir()
-    if base:
-        return Path(base)
-    return Path(__file__).resolve().parent.parent.parent / "uploads"
-
-
-UPLOAD_DIR = _upload_dir()
 MAX_FILE_BYTES = 10 * 1024 * 1024
 ALLOWED_EXT = {".pdf", ".jpg", ".jpeg", ".png", ".doc", ".docx", ".xls", ".xlsx"}
 
@@ -142,10 +134,10 @@ def upload_document(
     version = max([d.version for d in existing], default=0) + 1
 
     safe_name = re.sub(r"[^a-zA-Z0-9._-]", "_", original) or "dokumen"
-    stored = f"{uuid.uuid4().hex}_{safe_name}"
-    tenant_dir = UPLOAD_DIR / str(user.tenant_id)
-    tenant_dir.mkdir(parents=True, exist_ok=True)
-    (tenant_dir / stored).write_bytes(data)
+    storage_key = storage_service.get_storage().save(
+        str(user.tenant_id), safe_name, data,
+        file.content_type or "application/octet-stream",
+    )
 
     doc = Document(
         tenant_id=user.tenant_id,
@@ -155,7 +147,7 @@ def upload_document(
         file_name=original,
         mime_type=file.content_type or "application/octet-stream",
         size_bytes=len(data),
-        file_path=str(Path(str(user.tenant_id)) / stored),
+        file_path=storage_key,
         version=version,
         is_current=True,
         notes=(notes or "").strip() or None,
@@ -234,7 +226,12 @@ def download_document(
         pid = emp.person_id if emp else None
     if pid is not None:
         _check_population(db, user, pid)
-    path = UPLOAD_DIR / doc.file_path
-    if not path.is_file():
+    try:
+        content = storage_service.load_key(doc.file_path)
+    except FileNotFoundError:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Berkas tidak ditemukan")
-    return FileResponse(path, media_type=doc.mime_type, filename=doc.file_name)
+    return Response(
+        content=content,
+        media_type=doc.mime_type,
+        headers={"Content-Disposition": f'attachment; filename="{doc.file_name}"'},
+    )

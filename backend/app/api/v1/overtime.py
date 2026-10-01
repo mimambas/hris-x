@@ -158,7 +158,7 @@ def approve_l1(
 
 
 @router.post("/overtime/requests/{request_id}/approve-l2",
-             dependencies=[Depends(require_permission("overtime_request",
+             dependencies=[Depends(require_permission("payroll",
                                                        "correct"))])
 def approve_l2(
     request_id: uuid.UUID, body: LeaveDecisionRequest, request: Request,
@@ -167,7 +167,7 @@ def approve_l2(
     req = _get_or_404(db, user, request_id)
     own = population_service.get_user_employment(db, user)
     approver_emp_id = own.id if own is not None else None
-    can = rbp_service.has_permission(db, user, "overtime_request", "correct")
+    can = rbp_service.is_hr(db, user)
     try:
         old = req.status
         req = ot_service.approve_l2(

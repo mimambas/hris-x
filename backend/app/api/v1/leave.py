@@ -270,8 +270,8 @@ def approve_l1(
 
 
 @router.post("/leave/requests/{request_id}/approve-l2",
-             dependencies=[Depends(require_permission("leave_request",
-                                                       "correct"))])
+             dependencies=[Depends(require_permission("payroll",
+                                                      "correct"))])
 def approve_l2(
     request_id: uuid.UUID, body: LeaveDecisionRequest, request: Request,
     user: User = Depends(get_current_user), db: Session = Depends(get_db),
@@ -279,7 +279,7 @@ def approve_l2(
     req = _request_or_404(db, user, request_id)
     own = _own_employment(db, user)
     approver_emp_id = own.id if own is not None else None
-    can = rbp_service.has_permission(db, user, "leave_request", "correct")
+    can = rbp_service.is_hr(db, user)
     try:
         old = req.status
         req = leave_service.approve_l2(

@@ -1,5 +1,6 @@
 "use client";
 
+import { useAuth } from "@/components/AuthContext";
 import { useEffect, useState } from "react";
 import { apiFetch, ApiError } from "@/lib/api";
 import type { Claim, ClaimType, Employment, Person } from "@/lib/types";
@@ -28,6 +29,9 @@ interface Item extends Claim {
 type ActKind = "approve_l1" | "approve" | "reject" | "mark_paid";
 
 export default function PersetujuanKlaimPage() {
+  const { user } = useAuth();
+  // Approve final & tandai dibayar hanya boleh oleh HR.
+  const isHr = user?.is_hr ?? user?.is_superadmin ?? false;
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -171,7 +175,7 @@ export default function PersetujuanKlaimPage() {
                       Setujui L1
                     </button>
                   )}
-                  {kind === "l2" && (
+                  {kind === "l2" && isHr && (
                     <button
                       className={`${btnSmall} bg-brand-600 text-white hover:bg-brand-700`}
                       disabled={busyId === c.id}
@@ -183,7 +187,12 @@ export default function PersetujuanKlaimPage() {
                       Setujui final
                     </button>
                   )}
-                  {kind === "pay" && (
+                  {kind === "l2" && !isHr && (
+                    <span className="text-xs text-slate-500">
+                      Menunggu persetujuan HR/Finance
+                    </span>
+                  )}
+                  {kind === "pay" && isHr && (
                     <button
                       className={`${btnSmall} bg-emerald-600 text-white hover:bg-emerald-700`}
                       disabled={busyId === c.id}

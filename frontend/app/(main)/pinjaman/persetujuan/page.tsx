@@ -1,5 +1,6 @@
 "use client";
 
+import { useAuth } from "@/components/AuthContext";
 import { useEffect, useState } from "react";
 import { apiFetch, ApiError } from "@/lib/api";
 import type { Employment, Loan, Person } from "@/lib/types";
@@ -25,6 +26,9 @@ interface Item extends Loan {
 }
 
 export default function PersetujuanPinjamanPage() {
+  const { user } = useAuth();
+  // Persetujuan & penolakan pinjaman hanya boleh oleh HR/Finance.
+  const isHr = user?.is_hr ?? user?.is_superadmin ?? false;
   const [queue, setQueue] = useState<Item[]>([]);
   const [berjalan, setBerjalan] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
@@ -156,28 +160,34 @@ export default function PersetujuanPinjamanPage() {
                         {rupiah(l.monthly_installment)}
                       </td>
                       <td className="py-2">
-                        <div className="flex gap-1">
-                          <button
-                            className={`${btnSmall} bg-brand-600 text-white hover:bg-brand-700`}
-                            disabled={busyId === l.id}
-                            onClick={() => {
-                              setReason("");
-                              setModal({ item: l, kind: "approve" });
-                            }}
-                          >
-                            Setujui
-                          </button>
-                          <button
-                            className={`${btnSmall} bg-red-600 text-white hover:bg-red-700`}
-                            disabled={busyId === l.id}
-                            onClick={() => {
-                              setReason("");
-                              setModal({ item: l, kind: "reject" });
-                            }}
-                          >
-                            Tolak
-                          </button>
-                        </div>
+                        {isHr ? (
+                          <div className="flex gap-1">
+                            <button
+                              className={`${btnSmall} bg-brand-600 text-white hover:bg-brand-700`}
+                              disabled={busyId === l.id}
+                              onClick={() => {
+                                setReason("");
+                                setModal({ item: l, kind: "approve" });
+                              }}
+                            >
+                              Setujui
+                            </button>
+                            <button
+                              className={`${btnSmall} bg-red-600 text-white hover:bg-red-700`}
+                              disabled={busyId === l.id}
+                              onClick={() => {
+                                setReason("");
+                                setModal({ item: l, kind: "reject" });
+                              }}
+                            >
+                              Tolak
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-slate-500">
+                            Menunggu persetujuan HR/Finance
+                          </span>
+                        )}
                       </td>
                     </tr>
                   ))}

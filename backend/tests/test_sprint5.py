@@ -582,3 +582,45 @@ def test_uang_makan_and_mangkir_from_attendance(client, ctx):
     # Agustus 2026: 21 hari kerja → mangkir 18.
     assert snap["hari_mangkir"] == 18
     assert brk["potongan_mangkir"] == 18 * (8_650_000 / 25)
+
+
+# --------------------------------- regresi otorisasi approval final (SEC-001)
+#
+# Manajer memegang izin "correct" pada leave_request/overtime_request/claim
+# (dibutuhkan untuk antrean L1), tetapi approval FINAL hanya boleh oleh HR
+# (superadmin atau pemegang payroll:correct). Regresi dari insiden staging
+# 2026-10-01: manajer berhasil approve-l2 lembur.
+
+
+def test_manager_cannot_l2_leave(client, ctx):
+    h, h_mgr, h_staff, _, e_staff = _manager_staff_setup(client, ctx)
+    req = _submit_leave(client, h_staff, e_staff["id"],
+                        "2026-11-09", "2026-11-11")
+    r = client.post(f"/api/v1/leave/requests/{req['id']}/approve-l1",
+                    headers=h_mgr, json={"reason": "Disetujui atasan"})
+    assert r.status_code == 200, r.text
+    # Manajer (bukan HR) ditolak di L2.
+    r = client.post(f"/api/v1/leave/requests/{req['id']}/approve-l2",
+                    headers=h_mgr, json={"reason": "Coba L2"})
+    assert r.status_code == 403, r.text
+    # Status tidak berubah; HR/superadmin tetap bisa L2.
+    r = client.post(f"/api/v1/leave/requests/{req['id']}/approve-l2",
+                    headers=h, json={"reason": "Disetujui HR"})
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "approved"
+
+
+def test_manager_cannot_l2_overtime(client, ctx):
+    h, h_mgr, h_staff, _, e_staff = _manager_staff_setup(client, ctx)
+    req = _submit_overtime(client, h_staff, e_staff["id"],
+                           "2026-11-10", "18:00", "20:00")
+    r = client.post(f"/api/v1/overtime/requests/{req['id']}/approve-l1",
+                    headers=h_mgr, json={"reason": "Disetujui atasan"})
+    assert r.status_code == 200, r.text
+    r = client.post(f"/api/v1/overtime/requests/{req['id']}/approve-l2",
+                    headers=h_mgr, json={"reason": "Coba L2"})
+    assert r.status_code == 403, r.text
+    r = client.post(f"/api/v1/overtime/requests/{req['id']}/approve-l2",
+                    headers=h, json={"reason": "Disetujui HR"})
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "approved"

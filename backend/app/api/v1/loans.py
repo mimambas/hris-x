@@ -202,20 +202,20 @@ def submit_loan(
 
 
 @router.post("/loans/{loan_id}/approve",
-             dependencies=[Depends(require_permission(OBJECT, "correct"))])
+             dependencies=[Depends(require_permission("payroll", "correct"))])
 def approve_loan(
     loan_id: uuid.UUID, body: LoanDecision, request: Request,
     user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ):
     loan = _loan_or_404(db, user, loan_id)
-    if not _is_hr(db, user):
+    if not rbp_service.is_hr(db, user):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
                             "Persetujuan pinjaman hanya oleh HR/Finance")
     old_status = loan.status
     try:
         loans_service.approve_loan(
             db=db, tenant_id=user.tenant_id, loan_id=loan.id,
-            approver_user=user, can_approve=_is_hr(db, user))
+            approver_user=user, can_approve=rbp_service.is_hr(db, user))
     except (KeyError, ValueError) as e:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e))
     _audit(db, user, request, loan, "approve", old_status,
@@ -225,13 +225,13 @@ def approve_loan(
 
 
 @router.post("/loans/{loan_id}/reject",
-             dependencies=[Depends(require_permission(OBJECT, "correct"))])
+             dependencies=[Depends(require_permission("payroll", "correct"))])
 def reject_loan(
     loan_id: uuid.UUID, body: LoanDecision, request: Request,
     user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ):
     loan = _loan_or_404(db, user, loan_id)
-    if not _is_hr(db, user):
+    if not rbp_service.is_hr(db, user):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
                             "Penolakan pinjaman hanya oleh HR/Finance")
     if not body.reason or not body.reason.strip():

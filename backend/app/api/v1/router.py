@@ -6,6 +6,7 @@ from fastapi import APIRouter
 
 from app.api.v1 import (
     attendance,
+    backup,
     audit_logs,
     auth,
     claims,
@@ -47,6 +48,7 @@ api_router.include_router(documents.router)
 api_router.include_router(payroll.router)
 api_router.include_router(performance.router)
 api_router.include_router(attendance.router)
+api_router.include_router(backup.router)
 api_router.include_router(leave.router)
 api_router.include_router(overtime.router)
 api_router.include_router(recruitment.router)

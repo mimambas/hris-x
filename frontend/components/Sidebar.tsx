@@ -58,6 +58,24 @@ export function Sidebar() {
             </Link>
           );
         })}
+        {user?.is_superadmin && (
+          <>
+            <p className="px-3 pb-1 pt-4 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+              Admin
+            </p>
+            <Link
+              href="/admin/backup"
+              className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+                isActive(pathname, "/admin/backup")
+                  ? "bg-brand-600 text-white"
+                  : "text-slate-300 hover:bg-slate-800 hover:text-white"
+              }`}
+            >
+              <span aria-hidden>💾</span>
+              Backup
+            </Link>
+          </>
+        )}
       </nav>
 
       <div className="border-t border-slate-800 p-4">
