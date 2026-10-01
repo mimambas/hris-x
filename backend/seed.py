@@ -501,6 +501,14 @@ def main() -> None:
         grant(role_emp, "loan", can_view=True, can_insert=True,
               can_correct=True)
         grant(role_emp, "loan_policy", can_view=True)
+        # Fix UAT 2026-10-01: karyawan wajib bisa upload struk klaim via
+        # POST /documents (izin "document" insert) — tanpanya SEMUA
+        # pengajuan klaim ESS gagal 403 "Izin 'insert' pada 'document'
+        # ditolak". Manajer perlu lihat struk saat persetujuan L1.
+        # Scope populasi tetap ditegakkan di endpoint dokumen
+        # (karyawan: hanya milik sendiri; manajer: hanya timnya).
+        grant(role_emp, "document", can_view=True, can_insert=True)
+        grant(role_mgr, "document", can_view=True)
         db.flush()
 
         # ---- User tambahan terikat ke Person ----

@@ -116,6 +116,15 @@ def _grant_claims(ctx):
         FieldPermission(tenant_id=ta.id, role_id=r_mgr.id,
                         object_name="loan", field_name="*",
                         can_view=True),
+        # Fix UAT 2026-10-01: cerminkan seed.py — role karyawan (Inserter)
+        # butuh "document" view+insert agar bisa upload struk klaim (ESS),
+        # manajer butuh view untuk persetujuan L1.
+        FieldPermission(tenant_id=ta.id, role_id=r_ins.id,
+                        object_name="document", field_name="*",
+                        can_view=True, can_insert=True),
+        FieldPermission(tenant_id=ta.id, role_id=r_mgr.id,
+                        object_name="document", field_name="*",
+                        can_view=True),
     ])
     db.commit()
 
@@ -406,6 +415,27 @@ def test_loan_satu_aktif_per_karyawan(client, ctx):
     assert "masih punya pinjaman aktif" in r.json()["detail"]
 
 
+def test_loan_submitted_memblokir_approve_pesan_tepat(client, ctx):
+    h = ah(client)
+    _grant_claims(ctx)
+    _, e = _mk_employee(client, h, ctx, "Pinjam Antre")
+    loan1 = _submit_loan(client, h, e["id"], amount=5_000_000, tenor=12)
+    loan2 = _submit_loan(client, h, e["id"], amount=3_000_000, tenor=6)
+    # Belum ada yang disetujui; pemblokir berstatus submitted -> pesan
+    # menyebut "menunggu persetujuan", bukan "lunasi dulu".
+    r = client.post(f"/api/v1/loans/{loan2['id']}/approve", headers=h,
+                    json={"reason": "ok"})
+    assert r.status_code == 422
+    assert "menunggu persetujuan" in r.json()["detail"]
+    # Yang pertama tetap bisa disetujui setelah yang kedua dibatalkan.
+    r = client.post(f"/api/v1/loans/{loan2['id']}/cancel", headers=h)
+    assert r.status_code == 200, r.text
+    r = client.post(f"/api/v1/loans/{loan1['id']}/approve", headers=h,
+                    json={"reason": "ok"})
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "active"
+
+
 def test_loan_melebihi_maksimal_ditolak(client, ctx):
     h = ah(client)
     _grant_claims(ctx)
@@ -588,3 +618,54 @@ def test_rls_migration_mencakup_tabel_klaim_pinjaman():
     for tabel in ("claim_types", "claims", "tenant_loan_policies",
                   "loans", "loan_installments"):
         assert tabel in sql
+
+
+# --------------------------------- regresi UAT 2026-10-01: izin dokumen
+def test_karyawan_upload_struk_lalu_ajukan_klaim(client, ctx):
+    """Regresi UAT 2026-10-01: alur ESS klaim (upload struk -> ajukan ->
+    submit) gagal total dengan 403 "Izin 'insert' pada 'document' ditolak"
+    karena role karyawan tak punya izin document insert di seed.
+    Karyawan wajib bisa upload struk miliknya sendiri."""
+    h, h_mgr, h_staff, e_mgr, e_staff = _manager_staff_setup(client, ctx)
+    types = _claim_types(client, h)
+    png = b"\x89PNG\r\n\x1a\n-contoh-struk"
+    r = client.post(
+        "/api/v1/documents", headers=h_staff,
+        data={"doc_type": "lain", "employment_id": e_staff["id"],
+              "notes": "Struk klaim"},
+        files={"file": ("struk.png", png, "image/png")},
+    )
+    assert r.status_code == 201, r.text
+    doc_id = r.json()["id"]
+    # Struk terpasang -> klaim bisa diajukan & disubmit (draft -> submitted).
+    claim = _submit_claim(client, h_staff, e_staff["id"], types["klaim_kesehatan"],
+                          amount=1_500_000, receipt=doc_id)
+    assert claim["status"] == "submitted"
+    assert claim["receipt_document_id"] == doc_id
+    # Manajer bisa melihat daftar dokumen (untuk verifikasi struk saat L1).
+    r = client.get("/api/v1/documents",
+                   params={"employment_id": e_staff["id"]}, headers=h_mgr)
+    assert r.status_code == 200, r.text
+    assert any(d["id"] == doc_id for d in r.json())
+
+
+def test_seed_memberi_izin_document_untuk_alur_klaim():
+    """Regresi UAT 2026-10-01 (statis, pola test_channel_literal_muat_di_kolom_db):
+    seed.py wajib memberi izin 'document' ke role Karyawan (view+insert,
+    untuk upload struk) dan Manajer (view, untuk L1). Tanpa ini tenant baru
+    mengulang bug 403 pada pengajuan klaim."""
+    import pathlib
+    import re
+    seed = (pathlib.Path(__file__).resolve().parent.parent / "seed.py").read_text()
+    m_emp = re.search(
+        r'grant\(role_emp,\s*"document"([^)]*)\)', seed)
+    assert m_emp, "seed.py: grant document untuk role_emp tidak ditemukan"
+    assert "can_insert=True" in m_emp.group(1), \
+        "seed.py: role Karyawan wajib can_insert=True pada 'document'"
+    assert "can_view=True" in m_emp.group(1), \
+        "seed.py: role Karyawan wajib can_view=True pada 'document'"
+    m_mgr = re.search(
+        r'grant\(role_mgr,\s*"document"([^)]*)\)', seed)
+    assert m_mgr, "seed.py: grant document untuk role_mgr tidak ditemukan"
+    assert "can_view=True" in m_mgr.group(1), \
+        "seed.py: role Manajer wajib can_view=True pada 'document'"

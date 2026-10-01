@@ -346,3 +346,110 @@ export interface AcceptOfferResult {
   full_name: string;
   start_date: string;
 }
+
+// ---------------------------------------------------------------- Klaim (Sprint 8)
+export interface ClaimType {
+  id: string;
+  code: string;
+  name: string;
+  limit_per_year: number | null;
+  limit_per_claim: number | null;
+  requires_receipt: boolean;
+  active: boolean;
+}
+
+export type ClaimStatus =
+  | "draft"
+  | "submitted"
+  | "approved_l1"
+  | "approved"
+  | "rejected"
+  | "cancelled"
+  | "paid";
+
+export interface Claim {
+  id: string;
+  employment_id: string;
+  claim_type_id: string;
+  amount: number;
+  claim_date: string;
+  description: string | null;
+  receipt_document_id: string | null;
+  status: ClaimStatus;
+  paid_via: string; // "payroll" | "transfer"
+  payroll_run_id: string | null;
+  submitted_at: string | null;
+  approved_at: string | null;
+  paid_at: string | null;
+  payment_ref: string | null;
+  rejection_reason: string | null;
+  created_at: string;
+}
+
+export interface ClaimSummary {
+  claim_type_id: string;
+  claim_type_code: string;
+  claim_type_name: string;
+  limit_per_year: number | null;
+  used: number;
+  remaining: number | null;
+}
+
+// ---------------------------------------------------------------- Pinjaman (Sprint 8)
+export interface LoanPolicy {
+  id: string;
+  max_amount_multiplier: number;
+  max_tenor_months: number;
+  default_interest_rate: number;
+  allow_multiple_active: boolean;
+}
+
+export type LoanStatus =
+  | "draft"
+  | "submitted"
+  | "active"
+  | "rejected"
+  | "cancelled"
+  | "completed";
+
+export interface Loan {
+  id: string;
+  employment_id: string;
+  principal_amount: number;
+  interest_rate: number;
+  total_payable: number;
+  tenor_months: number;
+  monthly_installment: number;
+  remaining_total: number;
+  purpose: string | null;
+  status: LoanStatus;
+  submitted_at: string | null;
+  approved_at: string | null;
+  paid_off_at: string | null;
+  rejection_reason: string | null;
+  created_at: string;
+}
+
+export interface LoanInstallment {
+  id: string;
+  loan_id: string;
+  period: string;
+  amount: number;
+  kind: string; // "regular" | "payoff"
+  status: string; // "pending" | "paid"
+  payroll_run_id: string | null;
+  paid_at: string | null;
+}
+
+export interface Document {
+  id: string;
+  person_id: string | null;
+  employment_id: string | null;
+  doc_type: string;
+  file_name: string;
+  mime_type: string;
+  size_bytes: number;
+  version: number;
+  is_current: boolean;
+  notes: string | null;
+}

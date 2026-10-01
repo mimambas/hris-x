@@ -33,3 +33,14 @@ def get_allowed_origins() -> list[str]:
 
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRE_MINUTES = int(os.environ.get("JWT_EXPIRE_MINUTES", "480"))
+
+
+def get_upload_dir() -> str:
+    """Direktori penyimpanan berkas dokumen (struk, CV, dll).
+
+    Default: <backend>/uploads. Di Vercel serverless, filesystem deployment
+    read-only kecuali /tmp -> set UPLOAD_DIR=/tmp/hris-uploads agar upload
+    tidak 500. Isi /tmp ephemeral (hilang saat instance didaur ulang);
+    object storage persisten adalah solusi produksi (backlog infra).
+    """
+    return os.environ.get("UPLOAD_DIR", "").strip()

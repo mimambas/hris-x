@@ -142,12 +142,20 @@ def approve_loan(*, db: Session, tenant_id, loan_id, approver_user,
     if not (can_approve or approver_user.is_superadmin):
         raise ValueError("Persetujuan pinjaman hanya oleh HR/Finance")
     policy = get_loan_policy(db, tenant_id)
-    if not policy.allow_multiple_active and active_loan(
-            db, tenant_id, loan.employment_id, exclude_id=loan.id):
-        raise ValueError(
-            "Karyawan masih punya pinjaman aktif; "
-            "lunasi dulu sebelum mengajukan baru"
-        )
+    if not policy.allow_multiple_active:
+        blocker = active_loan(
+            db, tenant_id, loan.employment_id, exclude_id=loan.id)
+        if blocker is not None:
+            if blocker.status == "submitted":
+                raise ValueError(
+                    "Karyawan masih punya pengajuan pinjaman yang menunggu "
+                    "persetujuan; tolak atau batalkan dulu sebelum "
+                    "menyetujui pengajuan baru."
+                )
+            raise ValueError(
+                "Karyawan masih punya pinjaman aktif; "
+                "lunasi dulu sebelum mengajukan baru"
+            )
     if loan.tenor_months > policy.max_tenor_months:
         raise ValueError(
             f"Tenor {loan.tenor_months} bulan melebihi maksimal "

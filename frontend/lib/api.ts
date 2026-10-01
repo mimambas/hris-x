@@ -70,6 +70,47 @@ export async function apiFetch<T>(
   return (await res.json()) as T;
 }
 
+// Unggah berkas multipart beserta field form tambahan (mis. struk klaim:
+// doc_type, employment_id, notes). Tidak memakai Content-Type:
+// application/json agar browser mengisi boundary sendiri.
+export async function apiUploadForm<T>(
+  path: string,
+  fields: Record<string, string>,
+  file: File
+): Promise<T> {
+  const token = getToken();
+  const form = new FormData();
+  for (const [k, v] of Object.entries(fields)) form.append(k, v);
+  form.append("file", file);
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${path}`, { method: "POST", body: form, headers });
+  } catch {
+    throw new ApiError(0, "Tidak dapat terhubung ke server. Periksa koneksi Anda.");
+  }
+
+  if (res.status === 401) {
+    clearAuth();
+    if (typeof window !== "undefined") window.location.href = "/login";
+    throw new ApiError(401, friendlyMessage(401, null));
+  }
+
+  if (!res.ok) {
+    let detail: unknown = null;
+    try {
+      const body = await res.json();
+      detail = body?.detail ?? null;
+    } catch {
+      /* abaikan */
+    }
+    throw new ApiError(res.status, friendlyMessage(res.status, detail));
+  }
+  return (await res.json()) as T;
+}
+
 // Unduh file biner (PDF slip gaji) dengan header Authorization.
 export async function apiDownload(path: string, filename: string): Promise<void> {
   const token = getToken();

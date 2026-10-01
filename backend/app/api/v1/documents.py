@@ -29,6 +29,7 @@ from sqlalchemy.orm import Session
 
 from app.api.v1.common import client_ip
 from app.core.db import get_db
+from app.core.config import get_upload_dir
 from app.core.deps import get_current_user, require_permission
 from app.models import DOCUMENT_TYPES, Document, Employment, Person, User
 from app.schemas.schemas import DocumentOut
@@ -37,7 +38,15 @@ from app.services.audit import write_audit
 
 router = APIRouter(tags=["documents"])
 
-UPLOAD_DIR = Path(__file__).resolve().parent.parent.parent / "uploads"
+
+def _upload_dir() -> Path:
+    base = get_upload_dir()
+    if base:
+        return Path(base)
+    return Path(__file__).resolve().parent.parent.parent / "uploads"
+
+
+UPLOAD_DIR = _upload_dir()
 MAX_FILE_BYTES = 10 * 1024 * 1024
 ALLOWED_EXT = {".pdf", ".jpg", ".jpeg", ".png", ".doc", ".docx", ".xls", ".xlsx"}
 
