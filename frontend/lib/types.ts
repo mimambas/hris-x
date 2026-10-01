@@ -453,3 +453,23 @@ export interface Document {
   is_current: boolean;
   notes: string | null;
 }
+
+// ------------------------------------------------------------------ Lembur
+export interface OvertimeRequest {
+  id: string;
+  employment_id: string;
+  date: string;
+  start_time: string | null;
+  end_time: string | null;
+  hours: number;
+  reason: string | null;
+  status: string;
+  pay_amount: number;
+  rejection_reason: string | null;
+}
+
+export interface OvertimeRate {
+  first_hour_mult: number;
+  next_hour_mult: number;
+  divisor: number;
+}

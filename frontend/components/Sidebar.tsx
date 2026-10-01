@@ -9,6 +9,8 @@ const NAV = [
   { href: "/karyawan", label: "Karyawan", icon: "👥" },
   { href: "/cuti", label: "Cuti", icon: "🌴" },
   { href: "/cuti/persetujuan", label: "Persetujuan Cuti", icon: "✅" },
+  { href: "/lembur", label: "Lembur", icon: "🌙" },
+  { href: "/lembur/persetujuan", label: "Persetujuan Lembur", icon: "✅" },
   { href: "/absensi", label: "Absensi", icon: "⏰" },
   { href: "/rekrutmen/lowongan", label: "Rekrutmen", icon: "💼" },
   { href: "/rekrutmen/kandidat", label: "Kandidat", icon: "🧑‍💼" },

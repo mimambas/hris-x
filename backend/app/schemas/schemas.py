@@ -1099,6 +1099,8 @@ class OvertimeRequestOut(BaseModel):
     id: uuid.UUID
     employment_id: uuid.UUID
     date: date
+    start_time: datetime | None = None
+    end_time: datetime | None = None
     hours: float
     reason: str | None
     status: str
