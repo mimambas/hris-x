@@ -38,13 +38,16 @@ def test_create_app_di_pg_berrls():
         __import__("pathlib").Path(__file__).resolve().parent.parent
         / "migrations" / "001_rls.sql"
     ).read_text()
-    import re
-    # pecah per statement seperti apply-rls (sederhana: pakai psycopg raw)
     with eng.begin() as conn:
-        # psycopg3: beberapa statement sekaligus OK lewat exec_driver_sql? Tidak.
-        # Jalankan per potongan aman: DO block + CREATE FUNCTION mengandung ';'.
         for stmt in _split(mig):
             conn.exec_driver_sql(stmt)
+
+    # 2b) HAPUS tabel onboarding untuk meniru kondisi staging:
+    #     RLS sudah aktif, lalu create_all harus CREATE tabel baru.
+    with eng.begin() as conn:
+        for t in ("onboarding_template_tasks", "onboarding_tasks",
+                  "onboarding_processes", "onboarding_templates"):
+            conn.exec_driver_sql(f"DROP TABLE IF EXISTS {t} CASCADE")
 
     # 3) Jalankan create_app penuh -> ini yang meledak di Vercel?
     os.environ["DATABASE_URL"] = url
