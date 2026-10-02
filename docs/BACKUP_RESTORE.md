@@ -50,9 +50,13 @@ Berkas dokumen **tidak** disimpan di database. Abstraksi:
 
 ### Aktivasi Cloudinary (opsi storage produksi)
 
-> Belum terverifikasi resmi/live: klaim "tanpa kartu kredit" dan angka kuota
-> di bawah perlu dicek di halaman pricing resmi Cloudinary sebelum dipakai.
-> Cloudinary nyata juga belum pernah diuji end-to-end di proyek ini.
+> Status 2026-10-02: **terverifikasi**. Paket Free $0 "Free forever",
+> "No credit card required" (cloudinary.com/pricing, dicek 2026-10-02);
+> 25 kredit/bln (1 kredit = 1.000 transformasi ATAU 1GB storage ATAU 1GB
+> bandwidth). E2E di staging lolos: upload → unduh byte-identik untuk
+> PNG dan PDF; upload memakai `type="authenticated"` (privat).
+> Catatan: delivery PDF/ZIP dimatikan default oleh Cloudinary — aktifkan
+> sekali di Console → Settings → Security.
 
 1. Daftar gratis di https://cloudinary.com/users/register/free.
 2. Dari dashboard, salin **CLOUDINARY_URL** (`cloudinary://API_KEY:API_SECRET@CLOUD_NAME`).
@@ -70,3 +74,13 @@ terbaca tanpa migrasi DB.
 - Restore menimpa ke DB kosong; belum ada merge selektif per tabel.
 - `include_files=true` memperbesar dump (base64 hex); untuk arsip rutin
   cukup `false` + backup pg_dump harian (lapisan 2) yang mencakup semuanya.
+
+## 7. Menerapkan ulang RLS setelah menambah tabel
+
+Setiap tabel baru ber-`tenant_id` wajib didaftarkan di
+`backend/migrations/001_rls.sql`, lalu policy-nya diterapkan ke database:
+
+- Manual (punya akses psql): `psql "$DATABASE_URL" -f backend/migrations/001_rls.sql`
+- Via API (tanpa akses DB langsung): `POST /api/v1/admin/backup/apply-rls`
+  (superadmin saja; SQL berasal dari file di codebase yang ter-deploy,
+  bukan dari input user; idempoten; beraudit).

@@ -316,3 +316,16 @@ def test_backup_export_generator_pulihkan_konteks_tenant(client, ctx):
     dump = json.loads(body.decode("utf-8"))
     assert dump["format"] == "hrisx-backup/1"
     assert dump["tables"]["persons"], "dump harus memuat persons"
+
+
+def test_apply_rls_hanya_postgres(client, ctx):
+    # SQLite (test) -> 422, bukan 500.
+    h = login_headers(client, "hashiru", "admin_a@x.id")
+    r = client.post("/api/v1/admin/backup/apply-rls", headers=h)
+    assert r.status_code == 422
+
+
+def test_apply_rls_bukan_superadmin_ditolak(client, ctx):
+    h = login_headers(client, "hashiru", "u_staff@x.id")
+    r = client.post("/api/v1/admin/backup/apply-rls", headers=h)
+    assert r.status_code == 403

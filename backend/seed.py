@@ -509,6 +509,14 @@ def main() -> None:
         # (karyawan: hanya milik sendiri; manajer: hanya timnya).
         grant(role_emp, "document", can_view=True, can_insert=True)
         grant(role_mgr, "document", can_view=True)
+        # Modul ONB (PRD 12.2, F2): onboarding & offboarding.
+        # HR Admin: wildcard "*" sudah mencakup semua objek baru.
+        # Manajer: lihat proses timnya + kerjakan tugas timnya.
+        grant(role_mgr, "onboarding_process", can_view=True)
+        grant(role_mgr, "onboarding_task", can_view=True, can_correct=True)
+        # Karyawan: lihat proses milik sendiri + kerjakan tugasnya.
+        grant(role_emp, "onboarding_process", can_view=True)
+        grant(role_emp, "onboarding_task", can_view=True, can_correct=True)
         db.flush()
 
         # ---- User tambahan terikat ke Person ----

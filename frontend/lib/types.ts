@@ -474,3 +474,62 @@ export interface OvertimeRate {
   next_hour_mult: number;
   divisor: number;
 }
+
+export interface OnboardingTemplate {
+  id: string;
+  name: string;
+  kind: "onboarding" | "offboarding";
+  is_active: boolean;
+  task_count: number;
+  created_at: string;
+}
+
+export interface OnboardingTemplateTask {
+  id: string;
+  template_id: string;
+  title: string;
+  team: string;
+  due_offset_days: number;
+  sort_order: number;
+  required_doc_type: string | null;
+}
+
+export interface OnboardingTemplateDetail {
+  template: OnboardingTemplate;
+  tasks: OnboardingTemplateTask[];
+}
+
+export interface OnboardingProcess {
+  id: string;
+  person_id: string;
+  person_name: string | null;
+  employment_id: string | null;
+  template_id: string;
+  template_name: string | null;
+  kind: "onboarding" | "offboarding";
+  status: "in_progress" | "completed" | "cancelled";
+  start_date: string;
+  target_date: string | null;
+  notes: string | null;
+  total_tasks: number;
+  done_tasks: number;
+  overdue_tasks: number;
+  created_at: string;
+  completed_at: string | null;
+}
+
+export interface OnboardingTask {
+  id: string;
+  process_id: string;
+  title: string;
+  team: string;
+  assignee_user_id: string | null;
+  assignee_name: string | null;
+  due_date: string;
+  status: "pending" | "in_progress" | "done" | "skipped";
+  is_overdue: boolean;
+  completed_at: string | null;
+  notes: string | null;
+  required_doc_type?: string | null;
+  doc_ready?: boolean | null;
+}
