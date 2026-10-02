@@ -9,7 +9,10 @@ Backend yang tersedia:
 Kunci penyimpanan (``Document.file_path``) memakai prefix skema agar
 self-describing dan tahan pindah backend tanpa migrasi DB:
 - ``local:<relpath>``      mis. ``local:9f3c.../ab12_cv.pdf``
-- ``cloudinary:<public_id>`` mis. ``cloudinary:hris-x/9f3c.../ab12_cv``
+- ``cloudinary:<resource_type>/<public_id>``
+  mis. ``cloudinary:image/hris-x/9f3c.../ab12_cv``
+  (resource_type dari respons upload: image/video/raw — wajib konkret
+  karena URL delivery & API destroy tidak menerima "auto").
 Baris lama tanpa prefix dianggap ``local:`` (kompatibel mundur).
 """
 
@@ -114,16 +117,31 @@ class CloudinaryStorageBackend:
             type="authenticated",
             filename=filename,
         )
-        return f"cloudinary:{result['public_id']}"
+        # resource_type hasil deteksi ("image"/"video"/"raw") wajib disimpan:
+        # URL delivery & API destroy tidak menerima "auto".
+        rt = result.get("resource_type") or "image"
+        if rt not in ("image", "video", "raw"):
+            rt = "image"
+        return f"cloudinary:{rt}:{result['public_id']}"
+
+    @staticmethod
+    def _split_key(key: str) -> tuple[str, str]:
+        """Kembalikan (resource_type, public_id) dari kunci cloudinary."""
+        rest = _strip_scheme(key, "cloudinary")
+        rt, sep, public_id = rest.partition(":")
+        if not sep or rt not in ("image", "video", "raw"):
+            # Format lama (tanpa resource_type): default image.
+            return "image", rest
+        return rt, public_id
 
     def load(self, key: str) -> bytes:
         import urllib.request
 
-        public_id = _strip_scheme(key, "cloudinary")
+        rt, public_id = self._split_key(key)
         # Unduh server-side via URL bertanda tangan (tetap privat).
         url, _ = self._cloudinary.utils.cloudinary_url(
             public_id,
-            resource_type="auto",
+            resource_type=rt,
             type="authenticated",
             sign_url=True,
         )
@@ -132,9 +150,9 @@ class CloudinaryStorageBackend:
             return resp.read()
 
     def delete(self, key: str) -> None:
-        public_id = _strip_scheme(key, "cloudinary")
+        rt, public_id = self._split_key(key)
         self._cloudinary.uploader.destroy(
-            public_id, resource_type="auto", type="authenticated"
+            public_id, resource_type=rt, type="authenticated"
         )
 
 

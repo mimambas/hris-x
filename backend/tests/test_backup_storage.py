@@ -56,7 +56,7 @@ def test_cloudinary_tanpa_url_gagal_jelas(monkeypatch):
         storage_service.get_storage()
 
 
-def _mock_cloudinary(monkeypatch):
+def _mock_cloudinary(monkeypatch, resource_type="image"):
     fake = types.ModuleType("cloudinary")
     uploaded = {}
 
@@ -64,11 +64,12 @@ def _mock_cloudinary(monkeypatch):
         @staticmethod
         def upload(data, **kw):
             uploaded["kw"] = kw
-            return {"public_id": kw["public_id"]}
+            return {"public_id": kw["public_id"], "resource_type": resource_type}
 
         @staticmethod
         def destroy(public_id, **kw):
             uploaded["destroyed"] = public_id
+            uploaded["destroy_kw"] = kw
 
     class _Utils:
         @staticmethod
@@ -90,11 +91,31 @@ def test_cloudinary_backend_dimock(monkeypatch):
     monkeypatch.setenv("CLOUDINARY_URL", "cloudinary://k:s@demo")
     backend = storage_service.CloudinaryStorageBackend()
     key = backend.save("tenant-9", "struk.png", b"PNG", "image/png")
-    assert key.startswith("cloudinary:hris-x/tenant-9/")
+    assert key.startswith("cloudinary:image:hris-x/tenant-9/")
     # Upload harus privat (authenticated), bukan publik.
     assert uploaded["kw"]["type"] == "authenticated"
+    # resource_type konkret diteruskan ke destroy (bukan "auto").
     backend.delete(key)
     assert uploaded["destroyed"] in key
+    assert uploaded["destroy_kw"]["resource_type"] == "image"
+
+
+def test_cloudinary_resource_type_dari_respons_upload(monkeypatch):
+    """resource_type hasil deteksi upload (mis. raw untuk arsip) dipakai
+    saat load/delete — URL delivery tidak menerima 'auto'."""
+    uploaded = _mock_cloudinary(monkeypatch, resource_type="raw")
+    monkeypatch.setenv("CLOUDINARY_URL", "cloudinary://k:s@demo")
+    backend = storage_service.CloudinaryStorageBackend()
+    key = backend.save("tenant-9", "arsip.zip", b"ZIP", "application/zip")
+    assert key.startswith("cloudinary:raw:hris-x/tenant-9/")
+    rt, public_id = storage_service.CloudinaryStorageBackend._split_key(key)
+    assert rt == "raw"
+    assert public_id.startswith("hris-x/tenant-9/")
+    # Kunci format lama (tanpa resource_type) tetap terbaca.
+    rt2, _ = storage_service.CloudinaryStorageBackend._split_key(
+        "cloudinary:hris-x/tenant-9/lama"
+    )
+    assert rt2 == "image"
 
 
 # ---------------------------------------------------------- endpoint backup
