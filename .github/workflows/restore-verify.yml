@@ -52,3 +52,11 @@ jobs:
         env:
           HRISX_TEST_PG_URL: postgresql+psycopg://postgres:postgres@localhost:5432/hris_restore
         run: python -m pytest tests/test_backup_storage.py -q -p no:cacheprovider
+
+      - name: Uji startup aplikasi di Postgres ber-RLS
+        working-directory: backend
+        env:
+          HRISX_TEST_PG_URL: postgresql+psycopg://postgres:postgres@localhost:5432/hris_repro
+        run: |
+          PGPASSWORD=postgres psql -h localhost -U postgres -c "CREATE DATABASE hris_repro;" || true
+          python -m pytest tests/test_startup_postgres.py -q -p no:cacheprovider

@@ -41,7 +41,21 @@ def create_app(database_url: str | None = None) -> FastAPI:
 
     url = database_url or get_database_url()
     engine = init_db(url)
-    Base.metadata.create_all(engine)
+    # create_all HANYA untuk dev/test (SQLite). Di Postgres produksi/
+    # staging role aplikasi SENGAJA tanpa hak CREATE (ADR-0014) sehingga
+    # create_all MELEDAK ("permission denied for schema public") setiap
+    # ada tabel baru dan membuat SELURUH fungsi serverless gagal start.
+    # Tabel baru dibuat pemilik DB via skrip migrations/*.sql.
+    try:
+        Base.metadata.create_all(engine)
+    except Exception as exc:  # noqa: BLE001
+        import logging
+
+        logging.getLogger("hrisx").warning(
+            "create_all dilewati (%s). Pastikan skema terbaru sudah "
+            "diterapkan via migrations/*.sql sebagai pemilik database.",
+            exc,
+        )
 
     app = FastAPI(
         title="HRIS-X API",
