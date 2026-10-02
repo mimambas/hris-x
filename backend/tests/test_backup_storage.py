@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import types
 from pathlib import Path
@@ -183,6 +184,41 @@ def test_restore_roundtrip_ke_sqlite_kosong(client, ctx, tmp_path):
         timeout=300,
     )
     assert proc2.returncode == 3
+
+
+def test_restore_roundtrip_ke_postgres_kosong(client, ctx, tmp_path):
+    """Round-trip dump -> Postgres KOSONG -> verifikasi jumlah baris.
+
+    Bukti nyata restore di Postgres (bukan SQLite): dijalankan di CI dengan
+    service postgres:16 (lihat .github/workflows/restore-verify.yml).
+    Di-skip otomatis bila env HRISX_TEST_PG_URL tidak diset.
+    """
+    import subprocess
+
+    pg_url = os.environ.get("HRISX_TEST_PG_URL", "").strip()
+    if not pg_url:
+        pytest.skip("HRISX_TEST_PG_URL tidak diset (butuh Postgres asli)")
+
+    dump_file = tmp_path / "dump.json"
+    r = client.get("/api/v1/admin/backup/export", headers=_admin_headers(client))
+    assert r.status_code == 200
+    dump_file.write_bytes(r.content)
+    dump = json.loads(dump_file.read_text())
+    n_persons = len(dump["tables"]["persons"])
+    assert n_persons > 0
+
+    env = {"DATABASE_URL": pg_url, "PATH": "/usr/bin:/bin"}
+    proc = subprocess.run(
+        [sys.executable, "scripts/restore_backup.py", str(dump_file)],
+        cwd=Path(__file__).resolve().parent.parent,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
+    assert proc.returncode == 0, proc.stderr + proc.stdout
+    assert "RESTORE OK" in proc.stdout
+    assert f"verifikasi persons: dump={n_persons} db={n_persons} OK" in proc.stdout
 
 
 def test_backup_export_generator_pulihkan_konteks_tenant(client, ctx):

@@ -1,0 +1,54 @@
+# Verifikasi restore backup di Postgres ASLI (bukan SQLite).
+#
+# Setiap push yang menyentuh backend menjalankan round-trip:
+#   ekspor JSON (via test client) -> restore_backup.py ke Postgres kosong
+#   -> verifikasi jumlah baris per tabel.
+#
+# 100% gratis: GitHub Actions free tier (public repo) + service container
+# postgres:16. Tanpa secret, tanpa kartu.
+
+name: Verifikasi restore Postgres
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "backend/**"
+      - ".github/workflows/restore-verify.yml"
+  workflow_dispatch:
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependensi backend
+        run: python -m pip install -q -r backend/requirements.txt
+
+      - name: Siapkan database kosong untuk target restore
+        run: PGPASSWORD=postgres psql -h localhost -U postgres -c "CREATE DATABASE hris_restore;"
+
+      - name: Round-trip restore ke Postgres kosong
+        working-directory: backend
+        env:
+          HRISX_TEST_PG_URL: postgresql+psycopg://postgres:postgres@localhost:5432/hris_restore
+        run: python -m pytest tests/test_backup_storage.py -q -p no:cacheprovider
