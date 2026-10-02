@@ -4,7 +4,12 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { apiFetch, ApiError } from "@/lib/api";
-import type { Me, OnboardingProcess, OnboardingTask } from "@/lib/types";
+import type {
+  Me,
+  OnboardingProcess,
+  OnboardingTask,
+  OnboardingUserOption,
+} from "@/lib/types";
 import { tanggal } from "@/lib/format";
 import {
   PageHeader,
@@ -14,6 +19,7 @@ import {
   EmptyState,
   btnSmall,
   btnDanger,
+  inputCls,
 } from "@/components/ui";
 
 const TEAM_LABEL: Record<string, string> = {
@@ -44,12 +50,16 @@ export default function OnboardingDetailPage() {
   const id = params.id as string;
   const [me, setMe] = useState<Me | null>(null);
   const [data, setData] = useState<DetailResp | null>(null);
+  const [users, setUsers] = useState<OnboardingUserOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const isHr = me?.is_hr || me?.is_superadmin;
+  const canAssign = Boolean(
+    isHr || me?.roles?.includes("Manajer")
+  );
 
   async function load() {
     setLoading(true);
@@ -61,6 +71,15 @@ export default function OnboardingDetailPage() {
       ]);
       setMe(meData);
       setData(detail);
+      if (meData.is_hr || meData.is_superadmin || meData.roles?.includes("Manajer")) {
+        try {
+          setUsers(
+            await apiFetch<OnboardingUserOption[]>("/onboarding/assignable-users")
+          );
+        } catch {
+          setUsers([]);
+        }
+      }
     } catch (err) {
       setError(
         err instanceof ApiError ? err.message : "Gagal memuat detail proses."
@@ -87,6 +106,24 @@ export default function OnboardingDetailPage() {
     } catch (err) {
       setActionError(
         err instanceof ApiError ? err.message : "Gagal mengubah status tugas."
+      );
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function assign(task: OnboardingTask, userId: string) {
+    setBusyId(task.id);
+    setActionError(null);
+    try {
+      await apiFetch(`/onboarding/tasks/${task.id}/assign`, {
+        method: "POST",
+        body: JSON.stringify({ assignee_user_id: userId || null }),
+      });
+      await load();
+    } catch (err) {
+      setActionError(
+        err instanceof ApiError ? err.message : "Gagal menugaskan tugas."
       );
     } finally {
       setBusyId(null);
@@ -191,6 +228,30 @@ export default function OnboardingDetailPage() {
                         Lewati
                       </button>
                     )}
+                  </div>
+                )}
+                {process.status === "in_progress" && canAssign && (
+                  <div className="mt-2 flex items-center gap-2">
+                    <label
+                      className="text-xs text-slate-500"
+                      htmlFor={`assign-${t.id}`}
+                    >
+                      Penanggung jawab
+                    </label>
+                    <select
+                      id={`assign-${t.id}`}
+                      className={`${inputCls} max-w-xs`}
+                      value={t.assignee_user_id ?? ""}
+                      disabled={busyId === t.id}
+                      onChange={(e) => assign(t, e.target.value)}
+                    >
+                      <option value="">— Belum ditugaskan —</option>
+                      {users.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.full_name} ({u.email})
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 )}
               </li>

@@ -188,3 +188,56 @@ def test_offboarding_template_dan_cancel(client, ctx):
     ru = client.patch(f"/api/v1/onboarding/tasks/{tasks[0]['id']}",
                       json={"status": "done"}, headers=h)
     assert ru.status_code == 422
+
+
+def test_assignable_users_dan_assign_ke_my_tasks(client, ctx):
+    """Penugasan orang: HR memilih dari daftar user tenant; tugas muncul
+    di Tugas Saya milik penerima dan dapat diselesaikan olehnya."""
+    from app.models import FieldPermission, PermissionRole
+
+    h = _admin(client)
+    tid = _buat_template(client, h)
+    person_id = ctx["e_staff"].person_id
+    r = client.post(
+        "/api/v1/onboarding/processes",
+        json={"person_id": str(person_id), "template_id": tid,
+              "start_date": date.today().isoformat()},
+        headers=h,
+    )
+    pid = r.json()["id"]
+    tasks = client.get(f"/api/v1/onboarding/processes/{pid}",
+                       headers=h).json()["tasks"]
+    task = tasks[0]
+
+    # Samakan grant dengan seed: peran karyawan/manajer boleh correct tugas.
+    db = ctx["db"]
+    r_ins = db.query(PermissionRole).filter_by(
+        tenant_id=ctx["ta"].id, name="Inserter").one()
+    for obj in ("onboarding_process", "onboarding_task"):
+        db.add(FieldPermission(tenant_id=ctx["ta"].id, role_id=r_ins.id,
+                               object_name=obj, field_name="*",
+                               can_view=True, can_correct=True))
+    db.commit()
+
+    # Daftar pilihan penugasan memuat user aktif tenant ini.
+    ru = client.get("/api/v1/onboarding/assignable-users", headers=h)
+    assert ru.status_code == 200, ru.text
+    staff = next(u for u in ru.json() if u["email"] == "u_staff@x.id")
+
+    # Tugaskan: pending berubah in_progress, penerima tercatat.
+    ra = client.post(f"/api/v1/onboarding/tasks/{task['id']}/assign",
+                     json={"assignee_user_id": staff["id"]}, headers=h)
+    assert ra.status_code == 200, ra.text
+    assert ra.json()["assignee_user_id"] == staff["id"]
+    assert ra.json()["assignee_name"] == staff["full_name"]
+    assert ra.json()["status"] == "in_progress"
+
+    # Muncul di Tugas Saya penerima dan bisa diselesaikan olehnya.
+    h_staff = login_headers(client, "hashiru", "u_staff@x.id")
+    mine = client.get("/api/v1/onboarding/my-tasks", headers=h_staff)
+    assert mine.status_code == 200
+    assert any(t["id"] == task["id"] for t in mine.json())
+    rd = client.patch(f"/api/v1/onboarding/tasks/{task['id']}",
+                      json={"status": "done"}, headers=h_staff)
+    assert rd.status_code == 200, rd.text
+    assert rd.json()["status"] == "done"

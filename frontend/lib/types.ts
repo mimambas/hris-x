@@ -533,3 +533,9 @@ export interface OnboardingTask {
   required_doc_type?: string | null;
   doc_ready?: boolean | null;
 }
+
+export interface OnboardingUserOption {
+  id: string;
+  full_name: string;
+  email: string;
+}

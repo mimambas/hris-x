@@ -1761,3 +1761,10 @@ class OnboardingTaskOut(BaseModel):
 
 class OnboardingTaskAssign(BaseModel):
     assignee_user_id: uuid.UUID | None = None
+
+
+class OnboardingUserOptionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    full_name: str
+    email: str

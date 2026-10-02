@@ -49,6 +49,7 @@ from app.schemas.schemas import (
     OnboardingTemplateOut,
     OnboardingTemplateTaskCreate,
     OnboardingTemplateTaskOut,
+    OnboardingUserOptionOut,
 )
 from app.services import population as population_service
 from app.services import rbp as rbp_service
@@ -495,6 +496,24 @@ def my_tasks(
     ).scalars().all()
     today = date.today()
     return [_task_out(db, t, today) for t in tasks]
+
+
+@router.get(
+    "/assignable-users",
+    response_model=list[OnboardingUserOptionOut],
+    dependencies=[Depends(require_permission(TASK_OBJECT, "correct"))],
+)
+def assignable_users(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Daftar user aktif satu tenant untuk pilihan penugasan tugas."""
+    return db.execute(
+        select(User).where(
+            User.tenant_id == user.tenant_id,
+            User.is_active.is_(True),
+        ).order_by(User.full_name)
+    ).scalars().all()
 
 
 @router.patch(
