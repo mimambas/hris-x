@@ -15,6 +15,7 @@ from datetime import date, datetime
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Boolean,
     Date,
     DateTime,
@@ -375,6 +376,10 @@ class Job(Base):
     tenant_id: Mapped[uuid.UUID] = _tenant_fk()
     code: Mapped[str] = mapped_column(String(50), nullable=False)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
+    # CMP-001: grade gaji yang melekat pada jabatan ini (boleh kosong).
+    pay_grade_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("pay_grades.id"), nullable=True, index=True
+    )
 
     __table_args__ = (
         UniqueConstraint("tenant_id", "code", name="uq_jobs_tenant_code"),
@@ -2033,4 +2038,143 @@ class OnboardingTask(Base):
     # NULL = penyelesaian manual.
     required_doc_type: Mapped[str | None] = mapped_column(
         String(30), nullable=True
+    )
+
+
+# ---------------------------------------------------------------------------
+# Kompensasi (CMP, PRD 12.4, F3)
+# - PayGrade: grade + salary band (min/mid/max); jabatan menempel ke grade
+#   (Job.pay_grade_id). Compa-ratio = gaji_pokok / band_mid.
+# - CompCycle: siklus merit/bonus + guideline; CompCycleBudget: anggaran
+#   kenaikan tahunan per unit; CompProposal: usulan per karyawan dengan
+#   approval berjenjang (over-budget -> persetujuan tambahan).
+# ---------------------------------------------------------------------------
+
+
+class PayGrade(Base):
+    """CMP-001: pay grade dan salary band (min/mid/max) per tenant."""
+
+    __tablename__ = "pay_grades"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    code: Mapped[str] = mapped_column(String(20), nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    band_min: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    band_mid: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    band_max: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False,
+                                           default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "code", name="uq_paygrade_tenant_code"),
+    )
+
+
+class CompCycle(Base):
+    """CMP-002: siklus merit/bonus dengan guideline kenaikan."""
+
+    __tablename__ = "comp_cycles"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    # "merit" | "bonus".
+    kind: Mapped[str] = mapped_column(String(20), nullable=False,
+                                      default="merit")
+    period_year: Mapped[int] = mapped_column(Integer, nullable=False)
+    effective_date: Mapped[date] = mapped_column(Date, nullable=False)
+    # "draft" | "open" | "finalized" | "cancelled".
+    status: Mapped[str] = mapped_column(String(20), nullable=False,
+                                       default="draft")
+    # Guideline: [{"min_rating": 4.5, "max_rating": 5.0,
+    #              "min_pct": 8, "max_pct": 12}, ...] (persen kenaikan).
+    guideline: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    finalized_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class CompCycleBudget(Base):
+    """Anggaran total kenaikan (tahunan, rupiah) per unit dalam siklus."""
+
+    __tablename__ = "comp_cycle_budgets"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    cycle_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("comp_cycles.id"), nullable=False, index=True
+    )
+    org_unit_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("org_units.id"), nullable=False, index=True
+    )
+    budget_amount: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "cycle_id", "org_unit_id",
+                         name="uq_compbudget_cycle_unit"),
+    )
+
+
+class CompProposal(Base):
+    """Usulan perubahan kompensasi satu karyawan dalam satu siklus."""
+
+    __tablename__ = "comp_proposals"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    cycle_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("comp_cycles.id"), nullable=False, index=True
+    )
+    employment_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("employments.id"), nullable=False, index=True
+    )
+    person_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("persons.id"), nullable=False, index=True
+    )
+    # Snapshot unit saat usulan dibuat (dasar cek anggaran per unit).
+    org_unit_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("org_units.id"), nullable=True, index=True
+    )
+    current_salary: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    proposed_salary: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    # Snapshot rating penilaian terakhir (skala 1-5) untuk guideline.
+    rating: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
+    guideline_min_pct: Mapped[float | None] = mapped_column(
+        Numeric(6, 2), nullable=True)
+    guideline_max_pct: Mapped[float | None] = mapped_column(
+        Numeric(6, 2), nullable=True)
+    # "draft" | "submitted" | "pending_extra_approval" | "approved" |
+    # "rejected".
+    status: Mapped[str] = mapped_column(String(30), nullable=False,
+                                       default="draft")
+    over_budget: Mapped[bool] = mapped_column(Boolean, nullable=False,
+                                             default=False)
+    submitted_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True)
+    approved_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True)
+    extra_approved_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "cycle_id", "employment_id",
+                         name="uq_compproposal_cycle_emp"),
     )

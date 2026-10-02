@@ -517,6 +517,13 @@ def main() -> None:
         # Karyawan: lihat proses milik sendiri + kerjakan tugasnya.
         grant(role_emp, "onboarding_process", can_view=True)
         grant(role_emp, "onboarding_task", can_view=True, can_correct=True)
+        # Modul CMP (PRD 12.4, F3): kompensasi. HR Admin: wildcard "*"
+        # sudah mencakup "compensation" dan "compensation_analytics".
+        # Manajer: lihat data tim + buat/ajukan usulan siklus untuk timnya
+        # (approval tetap gate is_hr di endpoint).
+        grant(role_mgr, "compensation", can_view=True, can_correct=True)
+        # Analitik kesetaraan (CMP-004) SENGAJA tidak diberikan ke manajer:
+        # izin khusus HR. Karyawan memakai /total-rewards/me (login saja).
         db.flush()
 
         # ---- User tambahan terikat ke Person ----

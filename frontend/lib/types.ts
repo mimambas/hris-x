@@ -539,3 +539,125 @@ export interface OnboardingUserOption {
   full_name: string;
   email: string;
 }
+
+// ---------------------------------------------------------------------------
+// Kompensasi (CMP, PRD 12.4)
+// ---------------------------------------------------------------------------
+
+export interface PayGrade {
+  id: string;
+  code: string;
+  name: string;
+  band_min: number;
+  band_mid: number;
+  band_max: number;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface JobGrade {
+  job_id: string;
+  code: string;
+  title: string;
+  pay_grade_id: string | null;
+  grade_code: string | null;
+  grade_name: string | null;
+}
+
+export interface CompEmployee {
+  person_id: string;
+  employment_id: string;
+  person_name: string | null;
+  org_unit_id: string | null;
+  org_unit_name: string | null;
+  job_id: string | null;
+  job_title: string | null;
+  grade_id: string | null;
+  grade_code: string | null;
+  grade_name: string | null;
+  gaji_pokok: number | null;
+  compa_ratio: number | null;
+}
+
+export interface CompCycle {
+  id: string;
+  name: string;
+  kind: string;
+  period_year: number;
+  effective_date: string;
+  status: string;
+  guideline: { min_rating: number; max_rating: number; min_pct: number; max_pct: number }[] | null;
+  created_at: string;
+  finalized_at: string | null;
+  proposal_total: number;
+  proposal_approved: number;
+}
+
+export interface CompBudget {
+  org_unit_id: string;
+  org_unit_name: string | null;
+  budget_amount: number | null;
+  used_amount: number;
+  remaining: number | null;
+}
+
+export interface CompProposal {
+  id: string;
+  cycle_id: string;
+  employment_id: string;
+  person_id: string;
+  person_name: string | null;
+  org_unit_id: string | null;
+  org_unit_name: string | null;
+  current_salary: number;
+  proposed_salary: number;
+  increase_pct: number;
+  annualized_increase: number;
+  rating: number | null;
+  guideline_min_pct: number | null;
+  guideline_max_pct: number | null;
+  within_guideline: boolean | null;
+  status: string;
+  over_budget: boolean;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CompCycleDetail {
+  cycle: CompCycle;
+  budgets: CompBudget[];
+  proposals: CompProposal[];
+}
+
+export interface TotalRewards {
+  person_id: string;
+  person_name: string | null;
+  as_of: string;
+  monthly_components: Record<string, number>;
+  monthly_cash: number;
+  employer_bpjs_monthly: Record<string, number>;
+  employer_bpjs_total_monthly: number;
+  thr_estimate: number;
+  annual_total: number;
+}
+
+export interface PayEquityRow {
+  grade_code: string | null;
+  grade_name: string | null;
+  gender: string;
+  headcount: number;
+  avg_salary: number;
+  median_salary: number;
+}
+
+export interface PayEquity {
+  rows: PayEquityRow[];
+  gaps: {
+    grade_code: string | null;
+    grade_name: string | null;
+    avg_laki: number | null;
+    avg_perempuan: number | null;
+    gap_pct: number | null;
+  }[];
+}

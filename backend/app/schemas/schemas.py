@@ -1768,3 +1768,180 @@ class OnboardingUserOptionOut(BaseModel):
     id: uuid.UUID
     full_name: str
     email: str
+
+
+# ---------------------------------------------------------------------------
+# Kompensasi (CMP, PRD 12.4, F3)
+# ---------------------------------------------------------------------------
+
+
+class PayGradeCreate(BaseModel):
+    code: str = Field(min_length=1, max_length=20)
+    name: str = Field(min_length=1, max_length=120)
+    band_min: int = Field(ge=0)
+    band_mid: int = Field(ge=0)
+    band_max: int = Field(ge=0)
+
+
+class PayGradeUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    band_min: int | None = Field(default=None, ge=0)
+    band_mid: int | None = Field(default=None, ge=0)
+    band_max: int | None = Field(default=None, ge=0)
+    is_active: bool | None = None
+
+
+class PayGradeOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    code: str
+    name: str
+    band_min: int
+    band_mid: int
+    band_max: int
+    is_active: bool
+    created_at: datetime
+
+
+class JobGradeAssign(BaseModel):
+    job_id: uuid.UUID
+    pay_grade_id: uuid.UUID | None = None
+
+
+class JobGradeOut(BaseModel):
+    job_id: uuid.UUID
+    code: str
+    title: str
+    pay_grade_id: uuid.UUID | None
+    grade_code: str | None
+    grade_name: str | None
+
+
+class CompEmployeeOut(BaseModel):
+    person_id: uuid.UUID
+    employment_id: uuid.UUID
+    person_name: str | None
+    org_unit_id: uuid.UUID | None
+    org_unit_name: str | None
+    job_id: uuid.UUID | None
+    job_title: str | None
+    grade_id: uuid.UUID | None
+    grade_code: str | None
+    grade_name: str | None
+    gaji_pokok: int | None
+    compa_ratio: float | None
+
+
+class CompGuidelineItem(BaseModel):
+    min_rating: float
+    max_rating: float
+    min_pct: float
+    max_pct: float
+
+
+class CompCycleCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    kind: str = Field(default="merit", pattern=r"^(merit|bonus)$")
+    period_year: int = Field(ge=2000, le=2100)
+    effective_date: date
+    guideline: list[CompGuidelineItem] | None = None
+
+
+class CompCycleOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    kind: str
+    period_year: int
+    effective_date: date
+    status: str
+    guideline: list | None
+    created_at: datetime
+    finalized_at: datetime | None
+    proposal_total: int = 0
+    proposal_approved: int = 0
+
+
+class CompBudgetUpsert(BaseModel):
+    budget_amount: int = Field(ge=0)
+
+
+class CompBudgetOut(BaseModel):
+    org_unit_id: uuid.UUID
+    org_unit_name: str | None
+    budget_amount: int | None
+    used_amount: int
+    remaining: int | None
+
+
+class CompProposalCreate(BaseModel):
+    employment_id: uuid.UUID
+    proposed_salary: int = Field(ge=0)
+    notes: str | None = Field(default=None, max_length=1000)
+
+
+class CompProposalUpdate(BaseModel):
+    proposed_salary: int | None = Field(default=None, ge=0)
+    notes: str | None = Field(default=None, max_length=1000)
+
+
+class CompProposalOut(BaseModel):
+    id: uuid.UUID
+    cycle_id: uuid.UUID
+    employment_id: uuid.UUID
+    person_id: uuid.UUID
+    person_name: str | None
+    org_unit_id: uuid.UUID | None
+    org_unit_name: str | None
+    current_salary: int
+    proposed_salary: int
+    increase_pct: float
+    annualized_increase: int
+    rating: float | None
+    guideline_min_pct: float | None
+    guideline_max_pct: float | None
+    within_guideline: bool | None
+    status: str
+    over_budget: bool
+    notes: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class CompCycleDetail(BaseModel):
+    cycle: CompCycleOut
+    budgets: list[CompBudgetOut]
+    proposals: list[CompProposalOut]
+
+
+class TotalRewardsOut(BaseModel):
+    person_id: uuid.UUID
+    person_name: str | None
+    as_of: date
+    monthly_components: dict[str, int]
+    monthly_cash: int
+    employer_bpjs_monthly: dict[str, int]
+    employer_bpjs_total_monthly: int
+    thr_estimate: int
+    annual_total: int
+
+
+class PayEquityRow(BaseModel):
+    grade_code: str | None
+    grade_name: str | None
+    gender: str
+    headcount: int
+    avg_salary: int
+    median_salary: int
+
+
+class PayEquityGap(BaseModel):
+    grade_code: str | None
+    grade_name: str | None
+    avg_laki: int | None
+    avg_perempuan: int | None
+    gap_pct: float | None
+
+
+class PayEquityOut(BaseModel):
+    rows: list[PayEquityRow]
+    gaps: list[PayEquityGap]

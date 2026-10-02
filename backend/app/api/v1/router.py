@@ -11,6 +11,7 @@ from app.api.v1 import (
     auth,
     claims,
     comp_info,
+    compensation,
     contracts,
     custom_fields,
     dashboard,
@@ -56,5 +57,6 @@ api_router.include_router(recruitment.router)
 api_router.include_router(claims.router)
 api_router.include_router(loans.router)
 api_router.include_router(onboarding.router)
+api_router.include_router(compensation.router)
 api_router.include_router(dashboard.router)
 api_router.include_router(reports.router)

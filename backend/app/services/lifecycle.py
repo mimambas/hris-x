@@ -54,6 +54,11 @@ LIFECYCLE_EVENTS_SEED: list[tuple[str, str, str, list[str]]] = [
      "Perubahan komponen, rumus, atau assignment gaji",
      ["Komponen baru", "Perubahan rumus", "Perubahan nominal",
       "Nonaktifkan komponen", "Lainnya"]),
+    # CMP-005: hasil siklus kompensasi masuk sebagai versi CompInfo baru.
+    ("compensation_change", "Perubahan Kompensasi",
+     "Perubahan kompensasi karyawan bertanggal efektif",
+     ["Merit", "Promosi", "Penyesuaian pasar", "Penyesuaian berkala",
+      "Lainnya"]),
 ]
 
 ORG_EVENTS_SEED: list[tuple[str, str, str, list[str]]] = [

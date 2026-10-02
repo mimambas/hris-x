@@ -78,7 +78,9 @@ BEGIN
             'claim_types', 'claims', 'tenant_loan_policies', 'loans',
             'loan_installments',
             'onboarding_templates', 'onboarding_template_tasks',
-            'onboarding_processes', 'onboarding_tasks'
+            'onboarding_processes', 'onboarding_tasks',
+            'pay_grades', 'comp_cycles', 'comp_cycle_budgets',
+            'comp_proposals'
           )
     LOOP
         -- Isolasi tenant: baris hanya terlihat bila tenant_id cocok.
