@@ -1,0 +1,43 @@
+# SEMENTARA: reproduksi crash startup create_all di Postgres ber-RLS.
+# Dihapus setelah akar masalah ketemu.
+
+name: Repro startup RLS
+
+on:
+  workflow_dispatch:
+
+jobs:
+  repro:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: <redacted>
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependensi backend
+        run: python -m pip install -q -r backend/requirements.txt
+
+      - name: Siapkan database kosong
+        run: PGPASSWORD=postgres psql -h localhost -U postgres -c "CREATE DATABASE hris_repro;"
+
+      - name: Jalankan repro
+        working-directory: backend
+        env:
+          HRISX_TEST_PG_URL: postgresql+psycopg://postgres:postgres@localhost:5432/hris_repro
+        run: python -m pytest tests/test_rls_startup_repro.py -q -p no:cacheprovider -s 2>&1 | tail -40

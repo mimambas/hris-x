@@ -20,7 +20,6 @@ from app.api.v1 import (
     leave,
     lifecycle,
     loans,
-    onboarding,
     org,
     overtime,
     payroll,
@@ -55,6 +54,5 @@ api_router.include_router(overtime.router)
 api_router.include_router(recruitment.router)
 api_router.include_router(claims.router)
 api_router.include_router(loans.router)
-api_router.include_router(onboarding.router)
 api_router.include_router(dashboard.router)
 api_router.include_router(reports.router)
