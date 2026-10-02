@@ -80,7 +80,7 @@ BEGIN
             'onboarding_templates', 'onboarding_template_tasks',
             'onboarding_processes', 'onboarding_tasks',
             'pay_grades', 'comp_cycles', 'comp_cycle_budgets',
-            'comp_proposals'
+            'comp_proposals', 'training_assignments'
           )
     LOOP
         -- Isolasi tenant: baris hanya terlihat bila tenant_id cocok.

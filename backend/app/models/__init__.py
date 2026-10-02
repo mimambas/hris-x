@@ -718,7 +718,7 @@ class TenantContractPolicy(Base):
 # menaikkan version; versi lama tetap tersimpan (is_current=False).
 # file_path relatif terhadap direktori upload aplikasi.
 # ---------------------------------------------------------------------------
-DOCUMENT_TYPES = ("ktp", "kk", "npwp_card", "ijazah", "kontrak", "paklaring", "lain")
+DOCUMENT_TYPES = ("ktp", "kk", "npwp_card", "ijazah", "kontrak", "paklaring", "sertifikat", "lain")
 
 
 class Document(Base):
@@ -1643,7 +1643,14 @@ class TenantPerformancePolicy(Base):
 
 
 class TrainingCourse(Base):
-    """Katalog kursus/pelatihan."""
+    """Katalog kursus/pelatihan.
+
+    LRN-001 (PRD 12.5): kursus membawa konten belajar — ``content_type``
+    pdf/video/link/offline + ``content_url``. LRN-003: ``passing_score``
+    (nilai lulus post-test 0–100, None = tanpa gerbang nilai) dan
+    ``cert_validity_months`` (masa berlaku sertifikasi, mis. K3; None =
+    sertifikat tanpa kedaluwarsa).
+    """
 
     __tablename__ = "training_courses"
 
@@ -1653,9 +1660,17 @@ class TrainingCourse(Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     provider: Mapped[str | None] = mapped_column(String(200), nullable=True)
     duration_hours: Mapped[int] = mapped_column(Integer, nullable=False,
-                                               default=0)
+                                                default=0)
     cost: Mapped[int] = mapped_column(Integer, nullable=False,
                                       default=0)  # rupiah
+    # --- LRN-001/003 ---
+    content_type: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="offline"
+    )  # pdf | video | link | offline
+    content_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    passing_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cert_validity_months: Mapped[int | None] = mapped_column(
+        Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -1693,9 +1708,59 @@ class TrainingEnrollment(Base):
     certificate_document_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, nullable=True
     )
+    # --- LRN-001/002/003: progres belajar, penugasan wajib, nilai tes ---
+    progress_percent: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0)  # 0–100, terlacak per karyawan
+    due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    is_mandatory: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False)
+    pre_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    post_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Diisi saat selesai: completed_at + masa berlaku kursus (LRN-003).
+    cert_expires_at: Mapped[date | None] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+    @property
+    def is_overdue(self) -> bool:
+        """Terlambat: melewati tenggat dan belum selesai/dibatalkan."""
+        return (
+            self.due_date is not None
+            and self.status not in ("completed", "cancelled")
+            and self.due_date < date.today()
+        )
+
+
+class TrainingAssignment(Base):
+    """Penugasan pelatihan wajib (LRN-002) ke populasi target.
+
+    Satu baris per perintah penugasan; saat dibuat, sistem mematerialkan
+    enrollment wajib (``is_mandatory`` + ``due_date``) untuk setiap
+    employment aktif pada target: seluruh tenant (``all``), satu unit
+    organisasi (``org_unit``), atau pemegang satu jabatan (``job``).
+    """
+
+    __tablename__ = "training_assignments"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    course_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("training_courses.id"), nullable=False, index=True
+    )
+    target_type: Mapped[str] = mapped_column(
+        String(20), nullable=False)  # all | org_unit | job
+    org_unit_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, nullable=True, index=True)
+    job_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("jobs.id"), nullable=True, index=True)
+    due_days: Mapped[int] = mapped_column(Integer, nullable=False, default=30)
+    enrollments_created: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0)
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
 # ---------------------------------------------------------------------------

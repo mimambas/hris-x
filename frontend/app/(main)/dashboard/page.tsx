@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import {
   Bar,
   BarChart,
@@ -109,10 +110,15 @@ export default function DashboardPage() {
   const [turnover, setTurnover] = useState<TurnoverResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Karyawan biasa memang tidak punya izin "dashboard" view (PRD ANL-003:
+  // dasbor analitik khusus HR/manajer). Untuk mereka tampilkan sambutan
+  // berisi pintasan menu pribadi, bukan halaman error.
+  const [forbidden, setForbidden] = useState(false);
 
   async function load() {
     setLoading(true);
     setError(null);
+    setForbidden(false);
     try {
       const [hc, to] = await Promise.all([
         apiFetch<HeadcountResponse>(`/dashboard/headcount?as_of=${asOf}`),
@@ -121,7 +127,11 @@ export default function DashboardPage() {
       setHeadcount(hc);
       setTurnover(to);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Gagal memuat dasbor.");
+      if (err instanceof ApiError && err.status === 403) {
+        setForbidden(true);
+      } else {
+        setError(err instanceof ApiError ? err.message : "Gagal memuat dasbor.");
+      }
     } finally {
       setLoading(false);
     }
@@ -157,6 +167,36 @@ export default function DashboardPage() {
   }, [turnover]);
 
   if (loading) return <Spinner />;
+  if (forbidden) {
+    const pintasan = [
+      { href: "/absensi", judul: "Absensi", ket: "Catat kehadiran dan lihat riwayat presensi Anda." },
+      { href: "/cuti", judul: "Cuti", ket: "Ajukan cuti dan pantau status persetujuannya." },
+      { href: "/lembur", judul: "Lembur", ket: "Ajukan lembur dan lihat riwayatnya." },
+      { href: "/slip", judul: "Slip Gaji", ket: "Unduh slip gaji Anda per periode." },
+      { href: "/pelatihan", judul: "Pelatihan", ket: "Ikuti pelatihan yang ditugaskan dan unduh sertifikat." },
+      { href: "/klaim", judul: "Klaim", ket: "Ajukan klaim/reimbursement dan pantau pembayarannya." },
+    ];
+    return (
+      <div>
+        <PageHeader
+          title="Selamat datang di HRIS-X"
+          subtitle="Dasbor analitik khusus HR dan manajer — berikut pintasan menu pribadi Anda."
+        />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {pintasan.map((p) => (
+            <Link
+              key={p.href}
+              href={p.href}
+              className="block rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200 transition hover:bg-slate-50"
+            >
+              <p className="font-semibold text-slate-900">{p.judul}</p>
+              <p className="mt-1 text-sm text-slate-500">{p.ket}</p>
+            </Link>
+          ))}
+        </div>
+      </div>
+    );
+  }
   if (error) return <ErrorBox message={error} onRetry={load} />;
 
   return (

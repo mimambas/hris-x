@@ -5,6 +5,16 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/AuthContext";
 import { Field, inputCls, btnPrimary } from "@/components/ui";
 
+// Khusus demo: akun contoh tenant "hashiru" untuk login satu klik.
+// HAPUS blok ini (dan konstanta DEMO_*) sebelum dipakai produksi.
+const DEMO_TENANT = "hashiru";
+const DEMO_PASSWORD = "Password123!";
+const DEMO_ACCOUNTS = [
+  { label: "Admin HR", email: "admin@hashiru.id" },
+  { label: "Manajer — Dewi Lestari", email: "dewi@hashiru.id" },
+  { label: "Karyawan — Budi Santoso", email: "budi@hashiru.id" },
+];
+
 export default function LoginPage() {
   const { login, token, ready } = useAuth();
   const router = useRouter();
@@ -19,17 +29,28 @@ export default function LoginPage() {
     return null;
   }
 
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function doLogin(slug: string, em: string, pw: string) {
     setError(null);
     setBusy(true);
     try {
-      await login(tenantSlug.trim(), email.trim(), password);
+      await login(slug, em, pw);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Gagal masuk.");
     } finally {
       setBusy(false);
     }
+  }
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    await doLogin(tenantSlug.trim(), email.trim(), password);
+  }
+
+  async function quickLogin(em: string) {
+    setTenantSlug(DEMO_TENANT);
+    setEmail(em);
+    setPassword(DEMO_PASSWORD);
+    await doLogin(DEMO_TENANT, em, DEMO_PASSWORD);
   }
 
   return (
@@ -82,6 +103,29 @@ export default function LoginPage() {
             {busy ? "Memproses…" : "Masuk"}
           </button>
         </form>
+
+        <div className="mt-6 border-t border-slate-100 pt-5">
+          <p className="mb-3 text-center text-xs font-medium uppercase tracking-wide text-slate-400">
+            Login cepat · khusus demo
+          </p>
+          <div className="grid gap-2">
+            {DEMO_ACCOUNTS.map((a) => (
+              <button
+                key={a.email}
+                type="button"
+                onClick={() => quickLogin(a.email)}
+                disabled={busy}
+                className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+              >
+                {a.label}{" "}
+                <span className="text-xs text-slate-400">({a.email})</span>
+              </button>
+            ))}
+          </div>
+          <p className="mt-3 text-center text-xs text-slate-400">
+            Tenant: {DEMO_TENANT} · Kata sandi semua akun: {DEMO_PASSWORD}
+          </p>
+        </div>
 
         <p className="mt-6 text-center text-xs text-slate-400">
           Hubungi administrator bila Anda lupa kredensial.

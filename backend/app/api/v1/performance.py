@@ -18,7 +18,7 @@ karyawan biasa → 404 (jangan bocorkan keberadaan); mutasi tak berizin →
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi import (
     APIRouter,
@@ -36,11 +36,14 @@ from app.core.db import get_db
 from app.core.deps import get_current_user, require_permission
 from app.models import (
     Appraisal,
+    Document,
     Employment,
+    JobInfo,
     PerformanceGoal,
     Person,
     ReviewCycle,
     TenantPerformancePolicy,
+    TrainingAssignment,
     TrainingCourse,
     TrainingEnrollment,
     User,
@@ -48,7 +51,10 @@ from app.models import (
 from app.schemas.schemas import (
     AppraisalCreate,
     AppraisalOut,
+    TrainingAssignmentCreate,
+    TrainingAssignmentOut,
     CalibrateCreate,
+    CertExpiringOut,
     CourseCreate,
     CourseOut,
     CycleCreate,
@@ -58,6 +64,7 @@ from app.schemas.schemas import (
     EnrollmentCreate,
     EnrollmentDecision,
     EnrollmentOut,
+    EnrollmentProgress,
     GoalCreate,
     GoalDecision,
     GoalOut,
@@ -69,9 +76,11 @@ from app.schemas.schemas import (
     SelfAssessmentCreate,
     TrainingRecommendationOut,
 )
+from app.services import effective_dating as ed
 from app.services import performance as perf_service
 from app.services import population as population_service
 from app.services import rbp as rbp_service
+from app.services import storage as storage_service
 from app.services.audit import write_audit
 
 router = APIRouter(tags=["performance"])
@@ -754,7 +763,11 @@ def create_course(body: CourseCreate, request: Request,
         tenant_id=user.tenant_id, code=body.code.strip(),
         name=body.name.strip(),
         provider=(body.provider or "").strip() or None,
-        duration_hours=body.duration_hours, cost=body.cost)
+        duration_hours=body.duration_hours, cost=body.cost,
+        content_type=body.content_type,
+        content_url=(body.content_url or "").strip() or None,
+        passing_score=body.passing_score,
+        cert_validity_months=body.cert_validity_months)
     db.add(course)
     db.flush()
     _audit(db, user, request, "create", "training_course", course, None,
@@ -801,7 +814,9 @@ def create_enrollment(body: EnrollmentCreate, request: Request,
     enr = TrainingEnrollment(tenant_id=user.tenant_id, employment_id=emp.id,
                             course_id=course.id,
                             cycle_id=cycle.id if cycle else None,
-                            status="registered")
+                            status="registered",
+                            due_date=body.due_date,
+                            is_mandatory=body.is_mandatory)
     db.add(enr)
     db.flush()
     _audit(db, user, request, "create", "training_enrollment", enr, None,
@@ -864,13 +879,41 @@ def complete_enrollment(enrollment_id: uuid.UUID, body: EnrollmentComplete,
     if enr.status == "cancelled":
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
                             "Enrollment sudah cancelled")
+    # LRN-003: gerbang nilai lulus — post-test wajib mencapai ambang kursus.
+    course = _tenant_row(db, user, TrainingCourse, enr.course_id, "Kursus")
+    post_score = body.post_score if body.post_score is not None \
+        else enr.post_score
+    if course.passing_score is not None:
+        if post_score is None:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "Kursus ini mensyaratkan skor post-test untuk selesai")
+        if post_score < course.passing_score:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                f"Skor post-test {post_score} belum mencapai nilai lulus "
+                f"{course.passing_score}")
     enr.status = "completed"
     enr.completed_at = _now()
+    enr.progress_percent = 100
+    if post_score is not None:
+        enr.post_score = post_score
+    if course.cert_validity_months:
+        enr.cert_expires_at = _add_months(
+            enr.completed_at.date(), course.cert_validity_months)
+    # LRN-003: sertifikat terbit otomatis (dokumen PDF) kecuali sertifikat
+    # eksternal dilampirkan manual lewat body.certificate_document_id.
     if body.certificate_document_id is not None:
         enr.certificate_document_id = body.certificate_document_id
+    elif enr.certificate_document_id is None:
+        doc = _issue_certificate(db, user, emp, course, enr)
+        enr.certificate_document_id = doc.id
     db.flush()
     _audit(db, user, request, "complete", "training_enrollment", enr,
-           {"status": "registered"}, {"status": "completed"},
+           {"status": "registered"},
+           {"status": "completed", "post_score": enr.post_score,
+            "certificate_document_id": str(enr.certificate_document_id)
+            if enr.certificate_document_id else None},
            reason="Pelatihan selesai")
     db.commit()
     return enr
@@ -900,3 +943,259 @@ def cancel_enrollment(enrollment_id: uuid.UUID, body: EnrollmentDecision,
            reason=(body.reason or "Enrollment dibatalkan")[:500])
     db.commit()
     return enr
+
+
+# ---------------------------------------------------------------------------
+# Learning lanjutan (LRN, PRD 12.5) — progres, penugasan wajib, sertifikat.
+# Catatan penyederhanaan jujur: "pengingat" sertifikasi kedaluwarsa berupa
+# daftar endpoint + panel UI (belum ada kanal email/push di sistem).
+# ---------------------------------------------------------------------------
+def _add_months(d: date, months: int) -> date:
+    m = d.month - 1 + months
+    y = d.year + m // 12
+    m = m % 12 + 1
+    day = min(d.day, [31, 29 if y % 4 == 0 and (y % 100 != 0 or y % 400 == 0)
+                      else 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][m - 1])
+    return date(y, m, day)
+
+
+def _issue_certificate(db: Session, user: User, emp: Employment,
+                       course: TrainingCourse,
+                       enr: TrainingEnrollment) -> Document:
+    """LRN-003: terbitkan sertifikat PDF otomatis sebagai dokumen resmi."""
+    from xml.sax.saxutils import escape
+
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.lib.units import mm
+    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
+
+    person = db.get(Person, emp.person_id)
+    nama = person.full_name if person else "-"
+    selesai = enr.completed_at.date().isoformat() if enr.completed_at else "-"
+    baris = [
+        ("Nama Karyawan", nama),
+        ("Kursus", f"{course.name} ({course.code})"),
+    ]
+    if enr.post_score is not None:
+        baris.append(("Nilai Post-Test", str(enr.post_score)))
+    baris.append(("Tanggal Selesai", selesai))
+    if enr.cert_expires_at is not None:
+        baris.append(("Berlaku Hingga", enr.cert_expires_at.isoformat()))
+
+    import io
+    buf = io.BytesIO()
+    styles = getSampleStyleSheet()
+    doc_tpl = SimpleDocTemplate(buf, pagesize=A4,
+                                leftMargin=20 * mm, rightMargin=20 * mm,
+                                topMargin=20 * mm, bottomMargin=20 * mm)
+    story = [Paragraph("SERTIFIKAT KELULUSAN PELATIHAN",
+                       styles["Title"]), Spacer(1, 10 * mm)]
+    for label, value in baris:
+        story.append(Paragraph(
+            f"<b>{escape(label)}:</b> {escape(str(value))}",
+            styles["Normal"]))
+        story.append(Spacer(1, 3 * mm))
+    doc_tpl.build(story)
+    data = buf.getvalue()
+
+    filename = f"Sertifikat-{course.code}-{enr.id}.pdf"
+    key = storage_service.get_storage().save(
+        str(user.tenant_id), filename, data, "application/pdf")
+    doc = Document(
+        tenant_id=user.tenant_id, person_id=emp.person_id,
+        employment_id=emp.id, doc_type="sertifikat", file_name=filename,
+        mime_type="application/pdf", size_bytes=len(data), file_path=key,
+        version=1, is_current=True,
+        notes=f"Sertifikat otomatis kursus {course.code}",
+        uploaded_by_user_id=user.id)
+    db.add(doc)
+    db.flush()
+    return doc
+
+
+@router.post("/performance/enrollments/{enrollment_id}/progress",
+             response_model=EnrollmentOut,
+             dependencies=[Depends(require_permission("training_enrollment",
+                                                      "correct"))])
+def update_progress(enrollment_id: uuid.UUID, body: EnrollmentProgress,
+                    request: Request,
+                    user: User = Depends(get_current_user),
+                    db: Session = Depends(get_db)):
+    """LRN-001: progres belajar terlacak per karyawan (+ skor pre/post)."""
+    enr = _get_enrollment(db, user, enrollment_id)
+    emp = _employment(db, user, enr.employment_id)
+    _mutate_scope(db, user, emp, "training_enrollment")
+    if enr.cycle_id is not None:
+        perf_service.ensure_cycle_mutable(
+            _get_cycle(db, user, enr.cycle_id))
+    if enr.status in ("completed", "cancelled"):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"Enrollment sudah '{enr.status}', progres tidak bisa diubah")
+    enr.progress_percent = body.progress_percent
+    if body.pre_score is not None:
+        enr.pre_score = body.pre_score
+    if body.post_score is not None:
+        enr.post_score = body.post_score
+    if enr.status == "registered" and body.progress_percent > 0:
+        enr.status = "in_progress"
+    db.flush()
+    _audit(db, user, request, "update", "training_enrollment", enr, None,
+           {"progress_percent": enr.progress_percent,
+            "pre_score": enr.pre_score, "post_score": enr.post_score,
+            "status": enr.status},
+           reason="Progres belajar diperbarui")
+    db.commit()
+    return enr
+
+
+@router.post("/performance/assignments",
+             response_model=TrainingAssignmentOut, status_code=status.HTTP_201_CREATED,
+             dependencies=[Depends(require_permission("training_course",
+                                                      "insert"))])
+def create_assignment(body: TrainingAssignmentCreate, request: Request,
+                      user: User = Depends(get_current_user),
+                      db: Session = Depends(get_db)):
+    """LRN-002: tugaskan kursus wajib ke populasi; materialkan enrollment."""
+    course = _tenant_row(db, user, TrainingCourse, body.course_id, "Kursus")
+    if body.target_type == "org_unit" and body.org_unit_id is None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            "org_unit_id wajib untuk target org_unit")
+    if body.target_type == "job" and body.job_id is None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            "job_id wajib untuk target job")
+    today = date.today()
+    due = today + timedelta(days=body.due_days)
+    targets: list[Employment] = []
+    employments = db.execute(
+        select(Employment).where(
+            Employment.tenant_id == user.tenant_id,
+            Employment.status == "active")
+    ).scalars().all()
+    for emp in employments:
+        if body.target_type == "all":
+            targets.append(emp)
+            continue
+        info = ed.as_of(
+            db=db, tenant_id=user.tenant_id, model=JobInfo,
+            identity_field="employment_id", identity_value=emp.id,
+            as_of_date=today)
+        if info is None:
+            continue
+        if body.target_type == "org_unit" \
+                and str(info.org_unit_id) == str(body.org_unit_id):
+            targets.append(emp)
+        elif body.target_type == "job" \
+                and str(info.job_id) == str(body.job_id):
+            targets.append(emp)
+    created = 0
+    for emp in targets:
+        existing = db.execute(
+            select(TrainingEnrollment).where(
+                TrainingEnrollment.tenant_id == user.tenant_id,
+                TrainingEnrollment.employment_id == emp.id,
+                TrainingEnrollment.course_id == course.id,
+                TrainingEnrollment.status.in_(
+                    ["registered", "in_progress"]))
+        ).scalar_one_or_none()
+        if existing is not None:
+            continue
+        db.add(TrainingEnrollment(
+            tenant_id=user.tenant_id, employment_id=emp.id,
+            course_id=course.id, status="registered",
+            due_date=due, is_mandatory=True))
+        created += 1
+    asg = TrainingAssignment(
+        tenant_id=user.tenant_id, course_id=course.id,
+        target_type=body.target_type, org_unit_id=body.org_unit_id,
+        job_id=body.job_id, due_days=body.due_days,
+        enrollments_created=created, created_by_user_id=user.id)
+    db.add(asg)
+    db.flush()
+    _audit(db, user, request, "create", "training_assignment", asg, None,
+           snapshot(asg, ["id", "course_id", "target_type", "due_days",
+                          "enrollments_created"]),
+           reason="Penugasan pelatihan wajib")
+    db.commit()
+    return asg
+
+
+@router.get("/performance/assignments", response_model=list[TrainingAssignmentOut],
+            dependencies=[Depends(require_permission("training_enrollment",
+                                                     "view"))])
+def list_assignments(user: User = Depends(get_current_user),
+                     db: Session = Depends(get_db)):
+    return db.execute(
+        select(TrainingAssignment).where(
+            TrainingAssignment.tenant_id == user.tenant_id)
+        .order_by(TrainingAssignment.created_at.desc())
+    ).scalars().all()
+
+
+def _population_filter(db: Session, user: User,
+                       rows: list[TrainingEnrollment]
+                       ) -> list[TrainingEnrollment]:
+    """Batasi daftar ke populasi yang boleh dilihat user (None = semua)."""
+    visible = population_service.get_visible_person_ids(db, user)
+    if visible is None:
+        return rows
+    emp_ids = {str(e.id) for e in db.execute(
+        select(Employment).where(
+            Employment.tenant_id == user.tenant_id,
+            Employment.person_id.in_(visible))
+    ).scalars().all()}
+    return [r for r in rows if str(r.employment_id) in emp_ids]
+
+
+@router.get("/performance/learning/overdue", response_model=list[EnrollmentOut],
+            dependencies=[Depends(require_permission("training_enrollment",
+                                                     "view"))])
+def list_overdue(user: User = Depends(get_current_user),
+                 db: Session = Depends(get_db)):
+    """LRN-002: pelatihan (wajib bertenggat) yang terlambat — untuk atasan/HR."""
+    rows = db.execute(
+        select(TrainingEnrollment).where(
+            TrainingEnrollment.tenant_id == user.tenant_id,
+            TrainingEnrollment.due_date.is_not(None),
+            TrainingEnrollment.due_date < date.today(),
+            TrainingEnrollment.status.in_(["registered", "in_progress"]))
+        .order_by(TrainingEnrollment.due_date)
+    ).scalars().all()
+    return _population_filter(db, user, rows)
+
+
+@router.get("/performance/learning/certifications/expiring",
+            response_model=list[CertExpiringOut],
+            dependencies=[Depends(require_permission("training_enrollment",
+                                                     "view"))])
+def list_expiring_certifications(
+        within_days: int = Query(default=30, ge=0, le=365),
+        user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)):
+    """LRN-003: sertifikasi yang kedaluwarsa dalam ``within_days`` hari."""
+    today = date.today()
+    batas = today + timedelta(days=within_days)
+    rows = db.execute(
+        select(TrainingEnrollment).where(
+            TrainingEnrollment.tenant_id == user.tenant_id,
+            TrainingEnrollment.status == "completed",
+            TrainingEnrollment.cert_expires_at.is_not(None),
+            TrainingEnrollment.cert_expires_at <= batas)
+        .order_by(TrainingEnrollment.cert_expires_at)
+    ).scalars().all()
+    rows = _population_filter(db, user, rows)
+    out: list[CertExpiringOut] = []
+    for enr in rows:
+        emp = db.get(Employment, enr.employment_id)
+        person = db.get(Person, emp.person_id) if emp else None
+        course = db.get(TrainingCourse, enr.course_id)
+        out.append(CertExpiringOut(
+            enrollment_id=enr.id, employment_id=enr.employment_id,
+            person_name=person.full_name if person else "-",
+            course_code=course.code if course else "-",
+            course_name=course.name if course else "-",
+            completed_at=enr.completed_at,
+            cert_expires_at=enr.cert_expires_at,
+            days_remaining=(enr.cert_expires_at - today).days))
+    return out

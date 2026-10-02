@@ -1489,6 +1489,12 @@ class CourseCreate(BaseModel):
     provider: str | None = Field(default=None, max_length=200)
     duration_hours: int = Field(default=0, ge=0)
     cost: int = Field(default=0, ge=0)
+    # LRN-001/003
+    content_type: str = Field(default="offline",
+                              pattern="^(pdf|video|link|offline)$")
+    content_url: str | None = Field(default=None, max_length=500)
+    passing_score: int | None = Field(default=None, ge=0, le=100)
+    cert_validity_months: int | None = Field(default=None, ge=1, le=120)
 
 
 class CourseOut(BaseModel):
@@ -1499,12 +1505,19 @@ class CourseOut(BaseModel):
     provider: str | None
     duration_hours: int
     cost: int
+    content_type: str
+    content_url: str | None
+    passing_score: int | None
+    cert_validity_months: int | None
 
 
 class EnrollmentCreate(BaseModel):
     employment_id: uuid.UUID
     course_id: uuid.UUID
     cycle_id: uuid.UUID | None = None
+    # LRN-002: penugasan manual dengan tenggat
+    due_date: date | None = None
+    is_mandatory: bool = False
 
 
 class EnrollmentOut(BaseModel):
@@ -1516,10 +1529,60 @@ class EnrollmentOut(BaseModel):
     status: str
     completed_at: datetime | None
     certificate_document_id: uuid.UUID | None
+    # LRN-001/002/003
+    progress_percent: int
+    due_date: date | None
+    is_mandatory: bool
+    pre_score: int | None
+    post_score: int | None
+    cert_expires_at: date | None
+    is_overdue: bool
 
 
 class EnrollmentComplete(BaseModel):
     certificate_document_id: uuid.UUID | None = None
+    # LRN-003: skor post-test; wajib mencapai passing_score kursus.
+    post_score: int | None = Field(default=None, ge=0, le=100)
+
+
+class EnrollmentProgress(BaseModel):
+    """LRN-001: pembaruan progres belajar + skor tes (pre/post)."""
+    progress_percent: int = Field(ge=0, le=100)
+    pre_score: int | None = Field(default=None, ge=0, le=100)
+    post_score: int | None = Field(default=None, ge=0, le=100)
+
+
+class TrainingAssignmentCreate(BaseModel):
+    """LRN-002: penugasan wajib ke populasi target."""
+    course_id: uuid.UUID
+    target_type: str = Field(pattern="^(all|org_unit|job)$")
+    org_unit_id: uuid.UUID | None = None
+    job_id: uuid.UUID | None = None
+    due_days: int = Field(default=30, ge=1, le=365)
+
+
+class TrainingAssignmentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    course_id: uuid.UUID
+    target_type: str
+    org_unit_id: uuid.UUID | None
+    job_id: uuid.UUID | None
+    due_days: int
+    enrollments_created: int
+    created_at: datetime
+
+
+class CertExpiringOut(BaseModel):
+    """LRN-003: sertifikasi selesai yang mendekati/sudah kedaluwarsa."""
+    enrollment_id: uuid.UUID
+    employment_id: uuid.UUID
+    person_name: str
+    course_code: str
+    course_name: str
+    completed_at: datetime | None
+    cert_expires_at: date
+    days_remaining: int
 
 
 class EnrollmentDecision(BaseModel):
