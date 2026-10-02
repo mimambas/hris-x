@@ -25,7 +25,7 @@ from app.api.v1.common import client_ip
 from app.core.db import get_db
 from app.core.deps import get_current_user
 from app.core.rls import set_request_tenant_id
-from app.models import Base, User
+from app.models import Base, Tenant, User
 from app.services import storage as storage_service
 from app.services.audit import write_audit
 
@@ -84,9 +84,29 @@ def _iter_rows(db: Session, model, tenant_id: uuid.UUID):
         }
 
 
+def _tenant_payload(db: Session, tenant_id: uuid.UUID):
+    """Baris tenants milik tenant ini, untuk dimasukkan ke dump.
+
+    Tabel `tenants` tidak punya kolom tenant_id (ia adalah akar semua FK
+    tenant_id), jadi tidak ikut _tenant_mappers/_iter_rows. Tanpa baris ini,
+    restore ke database kosong gagal di Postgres asli: setiap INSERT ke
+    63 tabel lain melanggar FK -> tenants.id (di SQLite lolos diam-diam
+    karena FK tidak dienforce — bug 2026-10-02, ditemukan CI
+    restore-verify). Tabel tenants dikecualikan dari RLS (ADR-0014).
+    """
+    tenant = db.get(Tenant, tenant_id)
+    if tenant is None:
+        return None
+    return {
+        col.name: _serialize(getattr(tenant, col.name))
+        for col in Tenant.__table__.columns
+    }
+
+
 def _generate_dump(db: Session, tenant_id: uuid.UUID):
     yield '{"format": ' + json.dumps(BACKUP_FORMAT)
     yield ', "tenant_id": ' + json.dumps(str(tenant_id))
+    yield ', "tenant": ' + json.dumps(_tenant_payload(db, tenant_id))
     yield ', "exported_at": ' + json.dumps(
         dt.datetime.now(dt.timezone.utc).isoformat()
     )
@@ -158,6 +178,7 @@ def export_backup(
         # Disederhanakan: bangun dict per tabel dokumen dengan konten file.
         yield '{"format": ' + json.dumps(BACKUP_FORMAT)
         yield ', "tenant_id": ' + json.dumps(str(user.tenant_id))
+        yield ', "tenant": ' + json.dumps(_tenant_payload(db, user.tenant_id))
         yield ', "exported_at": ' + json.dumps(
             dt.datetime.now(dt.timezone.utc).isoformat()
         )

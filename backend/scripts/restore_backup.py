@@ -77,6 +77,8 @@ def main() -> int:
     engine = create_engine(db_url)
     Base.metadata.create_all(engine)
 
+    tenants_table = Base.metadata.tables["tenants"]
+
     from sqlalchemy.orm import Session
     with Session(engine) as db:
         if not args.force:
@@ -89,6 +91,34 @@ def main() -> int:
                 print("Target TIDAK kosong; batalkan (pakai --force untuk paksa).",
                       file=sys.stderr)
                 return 3
+
+        # Baris tenants WAJIB ada dulu: 63 tabel lain punya FK tenant_id ->
+        # tenants.id. Tanpa ini Postgres menolak semua INSERT (di SQLite
+        # lolos diam-diam karena FK tidak dienforce — bug 2026-10-02).
+        tenant_payload = dump.get("tenant")
+        if tenant_payload:
+            values = {
+                col.name: _parse(col.type, tenant_payload[col.name])
+                for col in tenants_table.c
+                if col.name in tenant_payload
+            }
+        else:
+            # Dump lama (tanpa kunci "tenant"): buat baris minimal agar FK
+            # valid. Slug asli tidak tersimpan -> koreksi manual setelahnya.
+            values = {
+                "id": tenant_id,
+                "slug": f"restored-{str(tenant_id)[:8]}",
+                "name": "Restored tenant",
+            }
+            print('  PERINGATAN: dump tanpa "tenant" (format lama); baris '
+                  "tenants dibuat minimal, periksa slug manual.")
+        already = db.execute(
+            select(tenants_table.c.id).where(tenants_table.c.id == tenant_id)
+        ).first()
+        if not already:
+            db.execute(tenants_table.insert().values(**values))
+            db.commit()
+        print(f"  tenants: 1 baris (id {str(tenant_id)[:8]}...)")
 
         for table in _tenant_tables():
             rows = tables_data.get(table.name, [])
@@ -116,6 +146,12 @@ def main() -> int:
 
         # Verifikasi jumlah baris.
         ok = True
+        got_tenant = db.execute(
+            select(tenants_table.c.id).where(tenants_table.c.id == tenant_id)
+        ).first()
+        print(f"verifikasi tenants: {'OK' if got_tenant else 'HILANG'}")
+        if not got_tenant:
+            ok = False
         for table in _tenant_tables():
             expected = sum(
                 1 for r in tables_data.get(table.name, [])

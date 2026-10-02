@@ -13,7 +13,10 @@ Terakhir diverifikasi: 2026-10-01 (staging).
 ## 2. Ekspor manual (level aplikasi)
 
 - Endpoint: `GET /api/v1/admin/backup/export` (superadmin saja, 403 untuk lainnya).
-- Format: `hrisx-backup/1` — JSON berisi seluruh 64 tabel tenant + `exported_at`.
+- Format: `hrisx-backup/1` — JSON berisi kunci `tenant` (baris tabel `tenants`
+  milik tenant — akar semua FK `tenant_id`; ditambahkan 2026-10-02 setelah CI
+  menemukan restore gagal `ForeignKeyViolation` tanpanya) + seluruh 64 tabel
+  tenant + `exported_at`.
 - `GET /api/v1/admin/backup/info` — ringkasan jumlah baris per tabel & backend storage aktif.
 - Opsi `?include_files=true` menyertakan isi berkas dokumen (hex); default `false` (berkas hidup di object storage, bukan DB).
 

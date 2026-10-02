@@ -156,6 +156,9 @@ def test_restore_roundtrip_ke_sqlite_kosong(client, ctx, tmp_path):
     dump = json.loads(dump_file.read_text())
     n_persons = len(dump["tables"]["persons"])
     assert n_persons > 0
+    # Baris tenants wajib ikut di dump (akar semua FK tenant_id).
+    assert dump["tenant"]["id"] == dump["tenant_id"]
+    assert dump["tenant"]["slug"] == "hashiru"
 
     target = tmp_path / "restore.db"
     env = {
@@ -173,6 +176,17 @@ def test_restore_roundtrip_ke_sqlite_kosong(client, ctx, tmp_path):
     assert proc.returncode == 0, proc.stderr + proc.stdout
     assert "RESTORE OK" in proc.stdout
     assert f"verifikasi persons: dump={n_persons} db={n_persons} OK" in proc.stdout
+    assert "verifikasi tenants: OK" in proc.stdout
+    # Baris tenants benar-benar ada di target (SQLite tidak enforce FK,
+    # jadi cek eksplisit — di Postgres kegagalan ini fatal).
+    import sqlite3
+
+    con = sqlite3.connect(target)
+    try:
+        row = con.execute("SELECT slug, name FROM tenants").fetchone()
+    finally:
+        con.close()
+    assert row == ("hashiru", "Hashiru")
 
     # Target yang sudah berisi data ditolak tanpa --force.
     proc2 = subprocess.run(
@@ -206,6 +220,9 @@ def test_restore_roundtrip_ke_postgres_kosong(client, ctx, tmp_path):
     dump = json.loads(dump_file.read_text())
     n_persons = len(dump["tables"]["persons"])
     assert n_persons > 0
+    # Baris tenants wajib ikut di dump (akar semua FK tenant_id).
+    assert dump["tenant"]["id"] == dump["tenant_id"]
+    assert dump["tenant"]["slug"] == "hashiru"
 
     env = {"DATABASE_URL": pg_url, "PATH": "/usr/bin:/bin"}
     proc = subprocess.run(
@@ -218,6 +235,7 @@ def test_restore_roundtrip_ke_postgres_kosong(client, ctx, tmp_path):
     )
     assert proc.returncode == 0, proc.stderr + proc.stdout
     assert "RESTORE OK" in proc.stdout
+    assert "verifikasi tenants: OK" in proc.stdout
     assert f"verifikasi persons: dump={n_persons} db={n_persons} OK" in proc.stdout
 
 
