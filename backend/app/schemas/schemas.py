@@ -103,6 +103,7 @@ class PersonCreate(BaseModel):
     gender: str | None = Field(default=None, max_length=1)  # Sprint 9: L/P
     email: str | None = None
     phone: str | None = Field(default=None, max_length=30)
+    address: str | None = Field(default=None, max_length=1000)
     npwp: str | None = None
     ptkp: str = "TK/0"
     bpjs_kes_no: str | None = None
@@ -170,6 +171,7 @@ class PersonUpdate(BaseModel):
     birth_date: date | None = None
     email: str | None = None
     phone: str | None = Field(default=None, max_length=30)
+    address: str | None = Field(default=None, max_length=1000)
     npwp: str | None = None
     bpjs_kes_no: str | None = None
     bpjs_tk_no: str | None = None
@@ -243,6 +245,7 @@ class PersonOut(BaseModel):
     gender: str | None  # Sprint 9: L/P
     email: str | None
     phone: str | None
+    address: str | None = None
     npwp: str | None
     ptkp: str
     bpjs_kes_no: str | None
@@ -2458,3 +2461,53 @@ class PayslipMineOut(BaseModel):
     person_name: str
     nik: str
     take_home_pay: int
+
+
+# ============================================ Perubahan data (EXP-004)
+class DataChangeCreate(BaseModel):
+    change_type: str = Field(
+        pattern="^(alamat|telepon|email|rekening|tanggungan)$")
+    # Isi sesuai change_type; divalidasi & di-snapshot ulang di server.
+    new_values: dict = {}
+    note: str | None = Field(default=None, max_length=500)
+
+
+class DataChangeOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    employment_id: uuid.UUID
+    person_id: uuid.UUID
+    person_name: str | None = None
+    change_type: str
+    old_values: dict
+    new_values: dict
+    status: str
+    note: str | None = None
+    otp_verified_at: datetime | None = None
+    otp_expires_at: datetime | None = None
+    decision_reason: str | None = None
+    decided_at: datetime | None = None
+    applied_at: datetime | None = None
+    created_at: datetime
+
+
+class DataChangeVerifyOtp(BaseModel):
+    code: str = Field(pattern=r"^\d{6}$")
+
+
+class DataChangeDecision(BaseModel):
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class DataChangeProfileOut(BaseModel):
+    person_id: uuid.UUID
+    employment_id: uuid.UUID | None = None
+    full_name: str
+    nik: str
+    email: str | None = None
+    phone: str | None = None
+    address: str | None = None
+    bank_name: str | None = None
+    bank_account_no: str | None = None
+    ptkp: str

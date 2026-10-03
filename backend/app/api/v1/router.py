@@ -19,6 +19,7 @@ from app.api.v1 import (
     documents,
     engagement,
     payslip_access,
+    data_changes,
     imports,
     inbox,
     job_info,
@@ -68,5 +69,6 @@ api_router.include_router(delegations.router)
 api_router.include_router(inbox.router)
 api_router.include_router(engagement.router)
 api_router.include_router(payslip_access.router)
+api_router.include_router(data_changes.router)
 api_router.include_router(dashboard.router)
 api_router.include_router(reports.router)

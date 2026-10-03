@@ -75,6 +75,8 @@ class Person(Base):
     birth_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(30), nullable=True)  # Sprint 6: dari offer accept
+    # Alamat domisili (EXP-004): diubah karyawan lewat workflow persetujuan.
+    address: Mapped[str | None] = mapped_column(Text, nullable=True)
     gender: Mapped[str | None] = mapped_column(String(1), nullable=True)  # Sprint 9: "L"/"P"
     npwp: Mapped[str | None] = mapped_column(String(16), nullable=True)  # format baru 16 digit
     ptkp: Mapped[str] = mapped_column(String(4), nullable=False, default="TK/0")
@@ -2771,3 +2773,59 @@ class PayslipPin(Base):
         UniqueConstraint("tenant_id", "user_id",
                          name="uq_payslip_pins_tenant_user"),
     )
+
+
+class DataChangeRequest(Base):
+    """Permintaan perubahan data pribadi via approval (EXP-004).
+
+    Karyawan mengajukan perubahan (alamat, telepon, email, rekening,
+    tanggungan/PTKP) dari profilnya; HR menyetujui sebelum data
+    diterapkan ke Person. Khusus rekening: wajib verifikasi OTP dulu
+    (PRD). Kode OTP disimpan ter-hash untuk verifikasi; salinan kode
+    sementara (`otp_code`) hanya dibaca HR untuk diteruskan ke
+    karyawan karena kanal pengiriman (email/WhatsApp) belum
+    terhubung — dibersihkan begitu terverifikasi/kedaluwarsa/
+    diputuskan, dan WAJIB diganti kanal pengiriman nyata sebelum
+    produksi.
+    """
+
+    __tablename__ = "data_change_requests"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    employment_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("employments.id"), nullable=False, index=True)
+    person_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("persons.id"), nullable=False, index=True)
+    # alamat | telepon | email | rekening | tanggungan
+    change_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    old_values: Mapped[dict] = mapped_column(JSON, nullable=False,
+                                             default=dict)
+    new_values: Mapped[dict] = mapped_column(JSON, nullable=False,
+                                             default=dict)
+    # menunggu_otp | menunggu_persetujuan | disetujui | ditolak |
+    # dibatalkan
+    status: Mapped[str] = mapped_column(String(25), nullable=False,
+                                        default="menunggu_persetujuan")
+    note: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    otp_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    otp_code: Mapped[str | None] = mapped_column(String(6), nullable=True)
+    otp_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True)
+    otp_attempts: Mapped[int] = mapped_column(Integer, nullable=False,
+                                              default=0)
+    otp_verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True)
+    decided_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True)
+    decision_reason: Mapped[str | None] = mapped_column(
+        String(500), nullable=True)
+    decided_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True)
+    applied_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(),
+        onupdate=func.now())

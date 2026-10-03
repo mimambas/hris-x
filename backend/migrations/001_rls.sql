@@ -92,7 +92,8 @@ BEGIN
             'internal_applications', 'approval_delegations',
             'announcements', 'announcement_reads', 'surveys',
             'survey_responses', 'kudos', 'helpdesk_tickets',
-            'helpdesk_messages', 'kb_articles', 'payslip_pins'
+            'helpdesk_messages', 'kb_articles', 'payslip_pins',
+            'data_change_requests'
           )
     LOOP
         -- Isolasi tenant: baris hanya terlihat bila tenant_id cocok.

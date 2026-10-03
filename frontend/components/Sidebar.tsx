@@ -27,6 +27,7 @@ const NAV = [
   { href: "/kompensasi", label: "Kompensasi", icon: "💰" },
   { href: "/suksesi", label: "Suksesi & Karier", icon: "🌟" },
   { href: "/keterlibatan", label: "Keterlibatan", icon: "💬" },
+  { href: "/profil", label: "Profil & Data Saya", icon: "👤" },
 ];
 
 function isActive(pathname: string, href: string): boolean {
