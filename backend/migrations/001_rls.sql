@@ -93,10 +93,11 @@ BEGIN
           )
     LOOP
         -- Isolasi tenant: baris hanya terlihat bila tenant_id cocok.
-        -- Sengaja TANPA format('%I'): string SQL ini juga dieksekusi
-        -- lewat psycopg3 (test startup + endpoint /apply-rls) yang
-        -- mem-parse '%' sebagai placeholder dan menolak %I.
-        -- quote_ident() setara %I untuk nama tabel dari daftar statis.
+        -- Sengaja ditulis dengan quote_ident(), BUKAN fungsi format
+        -- untuk identifier: string SQL ini juga dieksekusi lewat
+        -- psycopg3 (test startup + endpoint /apply-rls), dan driver itu
+        -- mem-parse tanda persen di seluruh teks statement — termasuk
+        -- di dalam komentar — sebagai placeholder klien.
         EXECUTE 'ALTER TABLE ' || quote_ident(t)
             || ' ENABLE ROW LEVEL SECURITY';
         EXECUTE 'ALTER TABLE ' || quote_ident(t)

@@ -212,7 +212,8 @@ BEGIN
         'internal_applications'
     ]
     LOOP
-        -- Tanpa format('%I') agar aman dieksekusi lewat psycopg3 juga.
+        -- Tanpa fungsi format identifier; lihat catatan di 001_rls.sql
+        -- (psycopg3 mem-parse tanda persen di teks statement).
         EXECUTE 'ALTER TABLE ' || quote_ident(t)
             || ' ENABLE ROW LEVEL SECURITY';
         EXECUTE 'ALTER TABLE ' || quote_ident(t)
