@@ -2829,3 +2829,60 @@ class DataChangeRequest(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(),
         onupdate=func.now())
+
+
+class Notification(Base):
+    """Notifikasi in-app per pengguna (EXP-005).
+
+    Dibuat oleh services.notify yang menghormati
+    NotificationPreference kanal in_app. Kanal email/WhatsApp belum
+    terhubung (preferensinya disimpan, berlaku saat kanal aktif).
+    """
+
+    __tablename__ = "notifications"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=False, index=True)
+    # pengumuman | kudos | helpdesk | perubahan_data | persetujuan
+    category: Mapped[str] = mapped_column(String(30), nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    link: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    is_read: Mapped[bool] = mapped_column(Boolean, nullable=False,
+                                          default=False)
+    read_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class NotificationPreference(Base):
+    """Preferensi notifikasi per pengguna x kategori x kanal (EXP-005).
+
+    Hanya baris eksplisit yang disimpan; tanpa baris berarti default:
+    in_app aktif, kanal lain nonaktif.
+    """
+
+    __tablename__ = "notification_preferences"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=False, index=True)
+    category: Mapped[str] = mapped_column(String(30), nullable=False)
+    # in_app | email | whatsapp
+    channel: Mapped[str] = mapped_column(String(20), nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False,
+                                          default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(),
+        onupdate=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "category", "channel",
+                         name="uq_notif_pref_user_cat_channel"),
+    )

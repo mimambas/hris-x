@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/components/AuthContext";
+import { NotificationBell } from "@/components/notifikasi";
 
 const NAV = [
   { href: "/dashboard", label: "Dasbor", icon: "📊" },
@@ -85,6 +86,9 @@ export function Sidebar() {
       </nav>
 
       <div className="border-t border-slate-800 p-4">
+        <div className="mb-2">
+          <NotificationBell />
+        </div>
         {user && (
           <div className="mb-3 px-1">
             <p className="truncate text-sm font-medium text-white">{user.full_name}</p>

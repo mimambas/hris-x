@@ -58,9 +58,11 @@ from app.schemas.schemas import (
     TicketStatusUpdate,
 )
 from app.services import effective_dating as ed
+from app.services import notify as notify_service
 from app.services import population as population_service
 from app.services import rbp as rbp_service
 from app.services.audit import write_audit
+from app.services.pph21 import validate_ptkp
 
 router = APIRouter(tags=["engagement"])
 
@@ -153,6 +155,14 @@ def create_announcement(body: AnnouncementCreate, request: Request,
                        published_by_user_id=user.id)
     db.add(ann)
     db.flush()
+    # EXP-005: notifikasi in-app ke karyawan target (hormati preferensi).
+    for emp in _target_employments(db, user, ann):
+        target = notify_service.user_for_employment(db, emp.id)
+        if target is not None and str(target.id) != str(user.id):
+            notify_service.notify(
+                db, tenant_id=user.tenant_id, user_id=target.id,
+                category="pengumuman", title=f"📢 {ann.title}",
+                body=ann.body[:140], link="/keterlibatan")
     out = _announcement_out(db, user, ann)
     _audit(db, user, request, "create", "announcement", ann,
            {"title": ann.title, "target_type": ann.target_type})
@@ -458,6 +468,11 @@ def give_kudos(body: KudosCreate, request: Request,
                 category=body.category, message=body.message)
     db.add(row)
     db.flush()
+    notify_service.notify_employment(
+        db, tenant_id=user.tenant_id,
+        employment_id=body.to_employment_id, category="kudos",
+        title=f"🏅 {user.full_name} memberi Anda kudos",
+        body=body.message[:140], link="/keterlibatan")
     out = _kudos_out(db, row)
     _audit(db, user, request, "create", "kudos", row,
            {"to_employment_id": str(row.to_employment_id),
@@ -707,6 +722,15 @@ def add_ticket_message(ticket_id: uuid.UUID, body: TicketMessageCreate,
         t.status = "diproses"
         t.assignee_user_id = user.id
     db.flush()
+    # EXP-005: kabari pembuat tiket bila yang membalas bukan dia.
+    maker = notify_service.user_for_employment(
+        db, t.requester_employment_id)
+    if maker is not None and str(maker.id) != str(user.id):
+        notify_service.notify(
+            db, tenant_id=user.tenant_id, user_id=maker.id,
+            category="helpdesk",
+            title=f"🎫 Balasan baru pada tiket: {t.subject}",
+            body=body.body[:140], link="/keterlibatan")
     db.commit()
     return msg
 
@@ -725,6 +749,12 @@ def update_ticket_status(ticket_id: uuid.UUID, body: TicketStatusUpdate,
     if body.status == "selesai":
         t.resolved_at = datetime.now(timezone.utc)
     db.flush()
+    notify_service.notify_employment(
+        db, tenant_id=user.tenant_id,
+        employment_id=t.requester_employment_id, category="helpdesk",
+        title=f"🎫 Status tiket berubah: {t.subject}",
+        body=f"Status tiket Anda kini: {body.status}.",
+        link="/keterlibatan")
     out = _ticket_out(db, t)
     _audit(db, user, request, "update", "helpdesk_ticket", t,
            {"from": old, "to": body.status})

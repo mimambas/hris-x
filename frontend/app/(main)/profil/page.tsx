@@ -5,6 +5,10 @@ import { apiFetch, ApiError } from "@/lib/api";
 import { tanggalWaktu } from "@/lib/format";
 import { useAuth } from "@/components/AuthContext";
 import {
+  NotificationPreferences,
+  NotificationsPanel,
+} from "@/components/notifikasi";
+import {
   Card,
   EmptyState,
   ErrorBox,
@@ -420,6 +424,8 @@ export default function ProfilPage() {
           {!profile && !isHr && (
             <EmptyState message="Akun Anda tidak terikat data karyawan, jadi halaman ini tidak tersedia." />
           )}
+          <NotificationsPanel />
+          <NotificationPreferences />
           {profile && (
           <>
           <Card title="Data saya saat ini">

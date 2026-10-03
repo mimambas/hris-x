@@ -41,6 +41,7 @@ from app.schemas.schemas import (
     DataChangeVerifyOtp,
 )
 from app.services import effective_dating as ed
+from app.services import notify as notify_service
 from app.services import population as population_service
 from app.services import rbp as rbp_service
 from app.services.audit import write_audit
@@ -458,6 +459,14 @@ def approve_change(req_id: uuid.UUID, body: DataChangeDecision,
     req.applied_at = now
     req.otp_code = None
     db.flush()
+    requester = notify_service.user_for_person_id(db, req.person_id)
+    if requester is not None:
+        notify_service.notify(
+            db, tenant_id=user.tenant_id, user_id=requester.id,
+            category="perubahan_data",
+            title=f"✅ Perubahan {req.change_type} disetujui",
+            body="Perubahan data Anda sudah diterapkan.",
+            link="/profil")
     out = _out(db, req)
     _audit(db, user, request, "approve", req,
            {"change_type": req.change_type,
@@ -487,6 +496,13 @@ def reject_change(req_id: uuid.UUID, body: DataChangeDecision,
     req.decided_at = datetime.now(timezone.utc)
     req.otp_code = None
     db.flush()
+    requester = notify_service.user_for_person_id(db, req.person_id)
+    if requester is not None:
+        notify_service.notify(
+            db, tenant_id=user.tenant_id, user_id=requester.id,
+            category="perubahan_data",
+            title=f"❌ Perubahan {req.change_type} ditolak",
+            body=body.reason or "", link="/profil")
     out = _out(db, req)
     _audit(db, user, request, "reject", req,
            {"change_type": req.change_type}, reason=body.reason)

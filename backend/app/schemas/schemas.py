@@ -2511,3 +2511,43 @@ class DataChangeProfileOut(BaseModel):
     bank_name: str | None = None
     bank_account_no: str | None = None
     ptkp: str
+
+
+# ------------------------------------------------------- EXP-005 notifikasi
+class NotificationOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    category: str
+    title: str
+    body: str
+    link: str | None = None
+    is_read: bool
+    read_at: datetime | None = None
+    created_at: datetime
+
+
+class NotificationListOut(BaseModel):
+    items: list[NotificationOut]
+    unread_count: int
+
+
+class NotificationPreferenceItem(BaseModel):
+    category: str
+    category_label: str
+    channel: str
+    channel_label: str
+    channel_available: bool
+    enabled: bool
+
+
+class NotificationPreferenceUpdate(BaseModel):
+    preferences: list["NotificationPreferenceEntry"] = Field(
+        default_factory=list, max_length=50)
+
+
+class NotificationPreferenceEntry(BaseModel):
+    category: str = Field(
+        pattern="^(pengumuman|kudos|helpdesk|perubahan_data|persetujuan)$")
+    channel: str = Field(pattern="^(in_app|email|whatsapp)$")
+    enabled: bool
