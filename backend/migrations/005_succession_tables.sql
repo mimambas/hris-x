@@ -212,13 +212,16 @@ BEGIN
         'internal_applications'
     ]
     LOOP
-        EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
-        EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', t);
-        EXECUTE format('DROP POLICY IF EXISTS tenant_isolation ON %I', t);
-        EXECUTE format(
-            'CREATE POLICY tenant_isolation ON %I '
-            'USING (tenant_id = app.current_tenant_id()) '
-            'WITH CHECK (tenant_id = app.current_tenant_id())', t);
+        -- Tanpa format('%I') agar aman dieksekusi lewat psycopg3 juga.
+        EXECUTE 'ALTER TABLE ' || quote_ident(t)
+            || ' ENABLE ROW LEVEL SECURITY';
+        EXECUTE 'ALTER TABLE ' || quote_ident(t)
+            || ' FORCE ROW LEVEL SECURITY';
+        EXECUTE 'DROP POLICY IF EXISTS tenant_isolation ON '
+            || quote_ident(t);
+        EXECUTE 'CREATE POLICY tenant_isolation ON ' || quote_ident(t)
+            || ' USING (tenant_id = app.current_tenant_id())'
+            || ' WITH CHECK (tenant_id = app.current_tenant_id())';
     END LOOP;
 END
 $$;
