@@ -7,7 +7,7 @@ from __future__ import annotations
 import uuid
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from fastapi.responses import PlainTextResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -41,6 +41,9 @@ from app.schemas.schemas import (
 from app.services import effective_dating as ed
 from app.services import payroll as payroll_service
 from app.services import payslip as payslip_service
+from app.services import payslip_pin as pin_service
+from app.services import population as population_service
+from app.services import rbp as rbp_service
 from app.services.audit import write_audit
 
 router = APIRouter(tags=["payroll"])
@@ -476,16 +479,47 @@ def _company_name(db: Session, tenant_id, employment: Employment,
 
 @router.get(
     "/payroll/runs/{run_id}/payslip/{employment_id}.pdf",
-    dependencies=[Depends(require_permission("payroll", "view"))],
 )
 def payslip_pdf(
     run_id: uuid.UUID,
     employment_id: uuid.UUID,
+    request: Request,
+    x_payslip_pin: str | None = Header(default=None),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     run = _run_or_404(db, user.tenant_id, run_id)
     line = _line_or_404(db, user.tenant_id, run, employment_id)
+    own = population_service.get_user_employment(db, user)
+    is_own = own is not None and str(own.id) == str(employment_id)
+    if not is_own and not rbp_service.has_permission(
+            db, user, "payroll", "view"):
+        # Slip orang lain tetap di gerbang izin payroll (HR/finance).
+        raise HTTPException(status.HTTP_403_FORBIDDEN,
+                            "Izin 'view' pada 'payroll' ditolak")
+    if is_own:
+        # EXP-003: slip milik sendiri wajib PIN (jalur self-service).
+        result = pin_service.check_pin(db, user, x_payslip_pin)
+        if result != pin_service.OK:
+            db.commit()  # simpan pencatatan kegagalan/kunci
+            # Selalu 403 agar klien tidak meng-logout pengguna (401
+            # dicadangkan untuk sesi berakhir).
+            detail = {
+                pin_service.NOT_SET: "PIN_BELUM_DIATUR",
+                pin_service.LOCKED: "PIN_TERKUNCI",
+                pin_service.WRONG: "PIN_SALAH",
+            }[result]
+            raise HTTPException(status.HTTP_403_FORBIDDEN, detail)
+    # Semua unduhan slip (sendiri maupun oleh HR) tercatat di audit.
+    write_audit(
+        db=db, tenant_id=user.tenant_id, actor_user_id=user.id,
+        action="download", object_type="payslip", object_id=line.id,
+        old_values=None,
+        new_values={"period": run.period,
+                    "employment_id": str(employment_id),
+                    "self_service": is_own},
+        reason=None, channel="api", ip=client_ip(request))
+    db.commit()
     employment = db.get(Employment, employment_id)
     pdf = payslip_service.render_payslip_pdf(
         line=line, period=run.period,

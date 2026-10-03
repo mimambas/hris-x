@@ -2737,3 +2737,37 @@ class KbArticle(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(),
         onupdate=func.now())
+
+
+class PayslipPin(Base):
+    """PIN akses slip gaji self-service (EXP-003, PRD 13.3/13.1).
+
+    Satu PIN per akun pengguna, disimpan sebagai hash bcrypt (tidak
+    pernah teks biasa). Akses slip gaji milik sendiri wajib PIN; 5
+    kegagalan beruntun mengunci verifikasi selama 15 menit. HR dapat
+    mereset PIN karyawan yang lupa (baris dihapus, karyawan membuat
+    PIN baru pada akses berikutnya). Biometrik perangkat di PRD
+    digantikan jalur PIN untuk aplikasi web ini.
+    """
+
+    __tablename__ = "payslip_pins"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=False, index=True)
+    pin_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    failed_attempts: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0)
+    locked_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(),
+        onupdate=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "user_id",
+                         name="uq_payslip_pins_tenant_user"),
+    )

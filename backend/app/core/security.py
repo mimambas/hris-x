@@ -56,6 +56,19 @@ def verify_password(password: str, password_hash: str) -> bool:
     return _password_hash.verify(password, password_hash)
 
 
+def hash_pin(pin: str) -> str:
+    """Hash PIN 6 digit (EXP-003) TANPA kebijakan kata sandi akun.
+
+    PIN memang pendek; perlindungannya adalah percobaan terbatas
+    (5x gagal -> kunci 15 menit), bukan kompleksitas.
+    """
+    return _password_hash.hash(pin)
+
+
+def verify_pin(pin: str, pin_hash: str) -> bool:
+    return _password_hash.verify(pin, pin_hash)
+
+
 def create_access_token(*, user_id: uuid.UUID, tenant_id: uuid.UUID, roles: list[str]) -> str:
     now = datetime.now(timezone.utc)
     payload = {

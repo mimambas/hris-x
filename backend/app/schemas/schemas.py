@@ -2419,3 +2419,42 @@ class KbArticleOut(BaseModel):
     body: str
     keywords: str | None = None
     created_at: datetime
+
+
+# ================================================== PIN slip (EXP-003)
+_PIN_PATTERN = r"^\d{6}$"
+
+
+class PayslipPinSet(BaseModel):
+    pin: str = Field(pattern=_PIN_PATTERN)
+    pin_confirmation: str = Field(pattern=_PIN_PATTERN)
+
+
+class PayslipPinChange(BaseModel):
+    current_pin: str = Field(pattern=_PIN_PATTERN)
+    new_pin: str = Field(pattern=_PIN_PATTERN)
+    new_pin_confirmation: str = Field(pattern=_PIN_PATTERN)
+
+
+class PayslipPinVerify(BaseModel):
+    pin: str = Field(pattern=_PIN_PATTERN)
+
+
+class PayslipPinStatusOut(BaseModel):
+    pin_set: bool
+    locked: bool
+    employment_id: uuid.UUID | None = None
+
+
+class PayslipPinReset(BaseModel):
+    user_id: uuid.UUID
+    reason: str = Field(min_length=3, max_length=500)
+
+
+class PayslipMineOut(BaseModel):
+    run_id: uuid.UUID
+    period: str
+    employment_id: uuid.UUID
+    person_name: str
+    nik: str
+    take_home_pay: int

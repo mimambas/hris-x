@@ -112,13 +112,17 @@ export async function apiUploadForm<T>(
 }
 
 // Unduh file biner (PDF slip gaji) dengan header Authorization.
-export async function apiDownload(path: string, filename: string): Promise<void> {
+export async function apiDownload(
+  path: string,
+  filename: string,
+  extraHeaders: Record<string, string> = {}
+): Promise<void> {
   const token = getToken();
+  const headers: Record<string, string> = { ...extraHeaders };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
   let res: Response;
   try {
-    res = await fetch(`${BASE}${path}`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
+    res = await fetch(`${BASE}${path}`, { headers });
   } catch {
     throw new ApiError(0, "Tidak dapat terhubung ke server. Periksa koneksi Anda.");
   }
@@ -127,7 +131,16 @@ export async function apiDownload(path: string, filename: string): Promise<void>
     if (typeof window !== "undefined") window.location.href = "/login";
     throw new ApiError(401, friendlyMessage(401, null));
   }
-  if (!res.ok) throw new ApiError(res.status, friendlyMessage(res.status, null));
+  if (!res.ok) {
+    let detail: unknown = null;
+    try {
+      const body = await res.json();
+      detail = body?.detail ?? null;
+    } catch {
+      /* abaikan */
+    }
+    throw new ApiError(res.status, friendlyMessage(res.status, detail));
+  }
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
