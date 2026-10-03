@@ -31,6 +31,11 @@
 -- ==============================================================================
 
 -- Fungsi pembantu: membaca tenant aktif dari GUC sesi.
+-- Skema `app` WAJIB dibuat dulu — di database yang benar-benar baru
+-- (instalasi pertama / target restore kosong) skema ini belum ada dan
+-- CREATE FUNCTION langsung gagal "schema app does not exist".
+CREATE SCHEMA IF NOT EXISTS app;
+
 CREATE OR REPLACE FUNCTION app.current_tenant_id()
 RETURNS uuid
 LANGUAGE sql
