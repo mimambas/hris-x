@@ -30,6 +30,7 @@ from app.api.v1 import (
     rbac,
     recruitment,
     reports,
+    succession,
     tenants,
 )
 
@@ -58,5 +59,6 @@ api_router.include_router(claims.router)
 api_router.include_router(loans.router)
 api_router.include_router(onboarding.router)
 api_router.include_router(compensation.router)
+api_router.include_router(succession.router)
 api_router.include_router(dashboard.router)
 api_router.include_router(reports.router)

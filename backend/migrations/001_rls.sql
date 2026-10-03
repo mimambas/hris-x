@@ -80,7 +80,11 @@ BEGIN
             'onboarding_templates', 'onboarding_template_tasks',
             'onboarding_processes', 'onboarding_tasks',
             'pay_grades', 'comp_cycles', 'comp_cycle_budgets',
-            'comp_proposals', 'training_assignments'
+            'comp_proposals', 'training_assignments',
+            'skills', 'person_skills', 'talent_profiles',
+            'succession_nominations', 'talent_pools', 'talent_pool_members',
+            'career_paths', 'idps', 'idp_items', 'internal_opportunities',
+            'internal_applications'
           )
     LOOP
         -- Isolasi tenant: baris hanya terlihat bila tenant_id cocok.

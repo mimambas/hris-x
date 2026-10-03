@@ -2008,3 +2008,207 @@ class PayEquityGap(BaseModel):
 class PayEquityOut(BaseModel):
     rows: list[PayEquityRow]
     gaps: list[PayEquityGap]
+
+
+# ---------------------------------------------------------------------------
+# Suksesi & karier (SUC, PRD 12.6). Nama class wajib berprefix Talent/di
+# modulnya — nama generik menimpa schema modul lain (lihat
+# tests/test_schema_names.py).
+# ---------------------------------------------------------------------------
+class TalentSkillCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    category: str | None = Field(default=None, max_length=80)
+
+
+class TalentSkillOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    name: str
+    category: str | None
+    status: str  # usulan | disetujui | ditolak
+    created_at: datetime
+
+
+class TalentSkillDecision(BaseModel):
+    decision: str = Field(pattern="^(setujui|tolak)$")
+
+
+class PersonSkillCreate(BaseModel):
+    # Salah satu: skill_id (katalog yang ada) atau skill_name (usulan baru).
+    skill_id: uuid.UUID | None = None
+    skill_name: str | None = Field(default=None, min_length=1, max_length=120)
+    proficiency: int = Field(default=1, ge=1, le=5)
+
+
+class PersonSkillOut(BaseModel):
+    skill_id: uuid.UUID
+    skill_name: str
+    category: str | None
+    proficiency: int
+    skill_status: str  # status governance skill di katalog
+
+
+class TalentProfileUpdate(BaseModel):
+    mobility_preference: str = Field(
+        pattern="^(tidak_terbuka|dalam_kota|luar_kota|semua)$")
+    career_aspiration: str | None = Field(default=None, max_length=2000)
+
+
+class TalentCertificationOut(BaseModel):
+    course_name: str
+    completed_at: datetime | None
+    cert_expires_at: date | None
+    certificate_document_id: uuid.UUID | None
+
+
+class TalentProfileOut(BaseModel):
+    employment_id: uuid.UUID
+    person_name: str
+    job_title: str | None
+    org_unit_name: str | None
+    mobility_preference: str
+    career_aspiration: str | None
+    skills: list[PersonSkillOut]  # hanya skill berstatus disetujui
+    pending_skills: list[PersonSkillOut]  # usulan, belum terhitung resmi
+    certifications: list[TalentCertificationOut]
+    latest_box_key: str | None
+    latest_box_label: str | None
+
+
+class SuccessionNominationCreate(BaseModel):
+    employment_id: uuid.UUID
+    readiness: str = Field(
+        pattern="^(siap_sekarang|siap_1_tahun|siap_2_tahun)$")
+    notes: str | None = Field(default=None, max_length=1000)
+
+
+class SuccessionNominationOut(BaseModel):
+    id: uuid.UUID
+    employment_id: uuid.UUID
+    person_name: str
+    readiness: str
+    notes: str | None
+    created_at: datetime
+
+
+class KeyPositionOut(BaseModel):
+    position_id: uuid.UUID
+    position_name: str
+    job_title: str | None
+    org_unit_name: str | None
+    nominations: list[SuccessionNominationOut]
+    has_ready_successor: bool  # ada nominasi siap_sekarang
+
+
+class KeyPositionFlagUpdate(BaseModel):
+    is_key: bool
+
+
+class TalentPoolCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    cycle_id: uuid.UUID
+    box_keys: list[str] = Field(min_length=1)
+
+
+class TalentPoolMemberOut(BaseModel):
+    employment_id: uuid.UUID
+    person_name: str
+    box_key: str
+
+
+class TalentPoolOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    cycle_id: uuid.UUID
+    box_keys: list[str]
+    members: list[TalentPoolMemberOut]
+    created_at: datetime
+
+
+class CareerPathCreate(BaseModel):
+    from_job_id: uuid.UUID
+    to_job_id: uuid.UUID
+    notes: str | None = Field(default=None, max_length=1000)
+
+
+class CareerPathOut(BaseModel):
+    id: uuid.UUID
+    from_job_id: uuid.UUID
+    from_job_title: str | None
+    to_job_id: uuid.UUID
+    to_job_title: str | None
+    notes: str | None
+
+
+class IdpCreate(BaseModel):
+    employment_id: uuid.UUID
+    target_job_id: uuid.UUID | None = None
+    year: int = Field(ge=2000, le=2100)
+
+
+class IdpItemCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=300)
+    course_id: uuid.UUID | None = None
+    target_date: date | None = None
+    notes: str | None = Field(default=None, max_length=1000)
+
+
+class IdpItemUpdate(BaseModel):
+    status: str = Field(pattern="^(belum|selesai)$")
+
+
+class IdpItemOut(BaseModel):
+    id: uuid.UUID
+    title: str
+    course_id: uuid.UUID | None
+    course_name: str | None
+    target_date: date | None
+    status: str
+    notes: str | None
+
+
+class IdpOut(BaseModel):
+    id: uuid.UUID
+    employment_id: uuid.UUID
+    person_name: str
+    target_job_id: uuid.UUID | None
+    target_job_title: str | None
+    year: int
+    status: str
+    items: list[IdpItemOut]
+
+
+class InternalOpportunityCreate(BaseModel):
+    kind: str = Field(pattern="^(proyek|gig|lowongan)$")
+    title: str = Field(min_length=1, max_length=300)
+    description: str | None = Field(default=None, max_length=5000)
+    org_unit_id: uuid.UUID | None = None
+
+
+class InternalOpportunityOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    kind: str
+    title: str
+    description: str | None
+    org_unit_id: uuid.UUID | None
+    status: str
+    created_at: datetime
+
+
+class InternalApplicationCreate(BaseModel):
+    cover_note: str | None = Field(default=None, max_length=2000)
+
+
+class InternalApplicationOut(BaseModel):
+    id: uuid.UUID
+    opportunity_id: uuid.UUID
+    employment_id: uuid.UUID
+    person_name: str
+    status: str  # diajukan | seleksi | diterima | ditolak
+    cover_note: str | None
+    created_at: datetime
+
+
+class InternalApplicationDecision(BaseModel):
+    status: str = Field(pattern="^(seleksi|diterima|ditolak)$")

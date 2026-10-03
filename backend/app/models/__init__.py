@@ -398,6 +398,8 @@ class Position(Base):
         Uuid, ForeignKey("org_units.id"), nullable=False, index=True
     )
     name: Mapped[str] = mapped_column(String(200), nullable=False)
+    # SUC-002: penanda posisi kunci untuk perencanaan suksesi.
+    is_key: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
 
 # ---------------------------------------------------------------------------
@@ -2242,4 +2244,272 @@ class CompProposal(Base):
     __table_args__ = (
         UniqueConstraint("tenant_id", "cycle_id", "employment_id",
                          name="uq_compproposal_cycle_emp"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Suksesi & karier (SUC, PRD 12.6 F3).
+#
+# Penyederhanaan vs PRD (jujur):
+# - SUC-006: tanpa inferensi AI. Semua skill baru berstatus "usulan" dan
+#   wajib disetujui HR sebelum terhitung di profil talent/talent pool —
+#   governance yang sama seperti yang PRD minta untuk hasil AI.
+# - SUC-003: talent pool adalah snapshot materialisasi dari appraisal satu
+#   siklus (final_score + potential_score terkalibrasi), bukan hitungan live.
+# - SUC-005: privasi lamaran internal ditegakkan di lapis query — atasan
+#   pelamar hanya melihat lamaran berstatus >= "seleksi".
+# ---------------------------------------------------------------------------
+class Skill(Base):
+    """Ontologi skill per tenant dengan governance (SUC-006)."""
+
+    __tablename__ = "skills"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    category: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    # usulan -> disetujui | ditolak (keputusan HR).
+    status: Mapped[str] = mapped_column(String(20), nullable=False,
+                                        default="usulan")
+    proposed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True)
+    decided_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "name", name="uq_skills_tenant_name"),
+    )
+
+
+class PersonSkill(Base):
+    """Skill yang dimiliki karyawan beserta tingkat kemahiran (SUC-001)."""
+
+    __tablename__ = "person_skills"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    employment_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("employments.id"), nullable=False, index=True)
+    skill_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("skills.id"), nullable=False, index=True)
+    proficiency: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1)  # 1..5
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "employment_id", "skill_id",
+                         name="uq_personskills_emp_skill"),
+    )
+
+
+class TalentProfile(Base):
+    """Profil talent per employment (SUC-001): preferensi mobilitas &
+    aspirasi karier. Skill, pengalaman, dan sertifikasi diagregasi dari
+    Core HR (JobInfo), Learning (sertifikat), dan PersonSkill."""
+
+    __tablename__ = "talent_profiles"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    employment_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("employments.id"), nullable=False, index=True)
+    # tidak_terbuka | dalam_kota | luar_kota | semua
+    mobility_preference: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="tidak_terbuka")
+    career_aspiration: Mapped[str | None] = mapped_column(Text, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(),
+        onupdate=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "employment_id",
+                         name="uq_talentprofiles_emp"),
+    )
+
+
+class SuccessionNomination(Base):
+    """Nominasi suksesor untuk posisi kunci (SUC-002)."""
+
+    __tablename__ = "succession_nominations"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    position_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("positions.id"), nullable=False, index=True)
+    employment_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("employments.id"), nullable=False, index=True)
+    # siap_sekarang | siap_1_tahun | siap_2_tahun
+    readiness: Mapped[str] = mapped_column(String(20), nullable=False)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    nominated_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "position_id", "employment_id",
+                         name="uq_succnom_position_emp"),
+    )
+
+
+class TalentPool(Base):
+    """Kelompok talent hasil snapshot matriks 9-box satu siklus (SUC-003)."""
+
+    __tablename__ = "talent_pools"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    cycle_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("review_cycles.id"), nullable=False, index=True)
+    # Kunci kotak 9-box yang dipilih, mis. ["star", "high_potential"].
+    box_keys: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class TalentPoolMember(Base):
+    """Anggota talent pool (snapshot kotak 9-box saat pool dibuat)."""
+
+    __tablename__ = "talent_pool_members"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    pool_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("talent_pools.id"), nullable=False, index=True)
+    employment_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("employments.id"), nullable=False, index=True)
+    box_key: Mapped[str] = mapped_column(String(40), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "pool_id", "employment_id",
+                         name="uq_talentpoolmember_pool_emp"),
+    )
+
+
+class CareerPath(Base):
+    """Peta jalur karier antarjabatan (SUC-004)."""
+
+    __tablename__ = "career_paths"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    from_job_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("jobs.id"), nullable=False, index=True)
+    to_job_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("jobs.id"), nullable=False, index=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "from_job_id", "to_job_id",
+                         name="uq_careerpath_from_to"),
+    )
+
+
+class Idp(Base):
+    """Individual Development Plan satu karyawan (SUC-004)."""
+
+    __tablename__ = "idps"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    employment_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("employments.id"), nullable=False, index=True)
+    target_job_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("jobs.id"), nullable=True, index=True)
+    year: Mapped[int] = mapped_column(Integer, nullable=False)
+    # draft | aktif | selesai
+    status: Mapped[str] = mapped_column(String(20), nullable=False,
+                                        default="aktif")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "employment_id", "year",
+                         name="uq_idps_emp_year"),
+    )
+
+
+class IdpItem(Base):
+    """Item pengembangan dalam IDP; boleh terhubung ke kursus (SUC-004)."""
+
+    __tablename__ = "idp_items"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    idp_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("idps.id"), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(300), nullable=False)
+    course_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("training_courses.id"), nullable=True, index=True)
+    target_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # belum | selesai
+    status: Mapped[str] = mapped_column(String(20), nullable=False,
+                                        default="belum")
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class InternalOpportunity(Base):
+    """Peluang internal: proyek, gig, atau lowongan (SUC-005)."""
+
+    __tablename__ = "internal_opportunities"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    # proyek | gig | lowongan
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    title: Mapped[str] = mapped_column(String(300), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    org_unit_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("org_units.id"), nullable=True, index=True)
+    # draft | terbuka | ditutup
+    status: Mapped[str] = mapped_column(String(20), nullable=False,
+                                        default="terbuka")
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class InternalApplication(Base):
+    """Lamaran karyawan ke peluang internal (SUC-005).
+
+    Alur: diajukan -> seleksi -> diterima | ditolak. Atasan pelamar hanya
+    boleh melihat lamaran berstatus >= "seleksi" (privasi PRD).
+    """
+
+    __tablename__ = "internal_applications"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    opportunity_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("internal_opportunities.id"), nullable=False,
+        index=True)
+    employment_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("employments.id"), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False,
+                                        default="diajukan")
+    cover_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    decided_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(),
+        onupdate=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "opportunity_id", "employment_id",
+                         name="uq_intapp_opp_emp"),
     )
