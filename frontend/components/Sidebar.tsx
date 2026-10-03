@@ -6,6 +6,7 @@ import { useAuth } from "@/components/AuthContext";
 
 const NAV = [
   { href: "/dashboard", label: "Dasbor", icon: "📊" },
+  { href: "/kotak-masuk", label: "Kotak Masuk", icon: "📥" },
   { href: "/karyawan", label: "Karyawan", icon: "👥" },
   { href: "/cuti", label: "Cuti", icon: "🌴" },
   { href: "/cuti/persetujuan", label: "Persetujuan Cuti", icon: "✅" },

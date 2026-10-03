@@ -2513,3 +2513,34 @@ class InternalApplication(Base):
         UniqueConstraint("tenant_id", "opportunity_id", "employment_id",
                          name="uq_intapp_opp_emp"),
     )
+
+
+class ApprovalDelegation(Base):
+    """Delegasi approval atasan (EXP-013, PRD 13.2).
+
+    Saat atasan cuti, kewenangan approval L1-nya (cuti, lembur, klaim)
+    berpindah ke karyawan lain selama jendela tanggal yang ditentukan.
+    Delegasi berakhir otomatis saat end_date lewat; status "dicabut"
+    bila delegator/HR membatalkan lebih awal.
+    """
+
+    __tablename__ = "approval_delegations"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    delegator_employment_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("employments.id"), nullable=False, index=True)
+    delegate_employment_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("employments.id"), nullable=False, index=True)
+    start_date: Mapped[date] = mapped_column(Date, nullable=False)
+    end_date: Mapped[date] = mapped_column(Date, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False,
+                                        default="aktif")
+    note: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(),
+        onupdate=func.now())

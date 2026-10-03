@@ -2212,3 +2212,50 @@ class InternalApplicationOut(BaseModel):
 
 class InternalApplicationDecision(BaseModel):
     status: str = Field(pattern="^(seleksi|diterima|ditolak)$")
+
+
+# ====================================================== ESS/MSS (PRD 13.2)
+class DelegationCreate(BaseModel):
+    delegate_employment_id: uuid.UUID
+    start_date: date
+    end_date: date
+    note: str | None = Field(default=None, max_length=255)
+
+
+class DelegationOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    delegator_employment_id: uuid.UUID
+    delegator_name: str | None = None
+    delegate_employment_id: uuid.UUID
+    delegate_name: str | None = None
+    start_date: date
+    end_date: date
+    status: str  # aktif | dicabut
+    effective_now: bool = False
+    # Relatif ke pemanggil /delegations/mine: "diberikan" | "diterima".
+    direction: str = "lainnya"
+    note: str | None = None
+    created_at: datetime
+
+
+class DelegationCandidateOut(BaseModel):
+    employment_id: uuid.UUID
+    person_name: str
+    job_title: str | None = None
+
+
+class InboxItemOut(BaseModel):
+    kind: str  # cuti | lembur | klaim | pinjaman
+    id: uuid.UUID
+    requester_name: str
+    summary: str
+    stage: str  # L1 | final
+    status: str
+    submitted_at: datetime | None = None
+
+
+class InboxOut(BaseModel):
+    items: list[InboxItemOut]
+    counts: dict[str, int]

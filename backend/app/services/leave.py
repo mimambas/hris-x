@@ -280,12 +280,18 @@ def _manager_employment_id(db: Session, tenant_id, employment_id) -> object | No
 def is_manager_of(
     db: Session, tenant_id, approver_employment_id, requester_employment_id
 ) -> bool:
-    """True bila approver adalah atasan langsung requester (org chart hari ini)."""
+    """True bila approver adalah atasan langsung requester (org chart
+    hari ini) ATAU penerima delegasi aktif dari atasan itu (EXP-013:
+    selama atasan cuti, kewenangan approval L1 berpindah ke delegate).
+    """
     manager_id = _manager_employment_id(db, tenant_id, requester_employment_id)
-    return (
-        manager_id is not None
-        and str(manager_id) == str(approver_employment_id)
-    )
+    if manager_id is None or approver_employment_id is None:
+        return False
+    if str(manager_id) == str(approver_employment_id):
+        return True
+    from app.services import delegation as delegation_service
+    return delegation_service.is_delegate_of(
+        db, tenant_id, approver_employment_id, manager_id)
 
 
 def approve_l1(

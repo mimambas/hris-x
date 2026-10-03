@@ -15,8 +15,10 @@ from app.api.v1 import (
     contracts,
     custom_fields,
     dashboard,
+    delegations,
     documents,
     imports,
+    inbox,
     job_info,
     leave,
     lifecycle,
@@ -60,5 +62,7 @@ api_router.include_router(loans.router)
 api_router.include_router(onboarding.router)
 api_router.include_router(compensation.router)
 api_router.include_router(succession.router)
+api_router.include_router(delegations.router)
+api_router.include_router(inbox.router)
 api_router.include_router(dashboard.router)
 api_router.include_router(reports.router)

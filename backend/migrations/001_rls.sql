@@ -89,7 +89,7 @@ BEGIN
             'skills', 'person_skills', 'talent_profiles',
             'succession_nominations', 'talent_pools', 'talent_pool_members',
             'career_paths', 'idps', 'idp_items', 'internal_opportunities',
-            'internal_applications'
+            'internal_applications', 'approval_delegations'
           )
     LOOP
         -- Isolasi tenant: baris hanya terlihat bila tenant_id cocok.
