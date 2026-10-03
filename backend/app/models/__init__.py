@@ -2544,3 +2544,196 @@ class ApprovalDelegation(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(),
         onupdate=func.now())
+
+
+class Announcement(Base):
+    """Pengumuman bertarget dengan tanda sudah dibaca (EXP-020).
+
+    Target: semua karyawan ("semua") atau satu unit organisasi
+    ("org_unit" + target_org_unit_id). HR melihat siapa yang belum
+    membaca lewat AnnouncementRead.
+    """
+
+    __tablename__ = "announcements"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    target_type: Mapped[str] = mapped_column(String(20), nullable=False,
+                                             default="semua")
+    target_org_unit_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("org_units.id"), nullable=True)
+    published_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True)
+    published_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class AnnouncementRead(Base):
+    """Tanda baca pengumuman per karyawan (EXP-020)."""
+
+    __tablename__ = "announcement_reads"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    announcement_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("announcements.id"), nullable=False, index=True)
+    employment_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("employments.id"), nullable=False, index=True)
+    read_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "announcement_id", "employment_id",
+                         name="uq_annread_ann_emp"),
+    )
+
+
+class Survey(Base):
+    """Survei pulse / eNPS anonim (EXP-021).
+
+    kind "enps": skor 0-10; kind "pulse": skor 1-5. Hasil agregat hanya
+    ditampilkan bila responden >= 5 (aturan PRD).
+    """
+
+    __tablename__ = "surveys"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False,
+                                        default="aktif")
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now())
+    closed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True)
+
+
+class SurveyResponse(Base):
+    """Respons survei — anonim by design (EXP-021).
+
+    respondent_hash = HMAC-SHA256(survey_id + employment_id) memakai
+    secret aplikasi: mencegah suara ganda tanpa menyimpan identitas
+    responden. Tidak ada FK ke employments.
+    """
+
+    __tablename__ = "survey_responses"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    survey_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("surveys.id"), nullable=False, index=True)
+    respondent_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    score: Mapped[int] = mapped_column(Integer, nullable=False)
+    comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "survey_id", "respondent_hash",
+                         name="uq_surveyresp_survey_hash"),
+    )
+
+
+class Kudos(Base):
+    """Pengakuan antarkaryawan (EXP-022).
+
+    Penerima boleh menyembunyikan kudos dari profilnya
+    (visible_on_profile=False) — PRD: tampil di profil hanya bila
+    karyawan mengizinkan.
+    """
+
+    __tablename__ = "kudos"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    from_employment_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("employments.id"), nullable=False, index=True)
+    to_employment_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("employments.id"), nullable=False, index=True)
+    category: Mapped[str] = mapped_column(String(30), nullable=False,
+                                          default="kolaborasi")
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    visible_on_profile: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class HelpdeskTicket(Base):
+    """Tiket layanan HR (EXP-023): kategori + SLA sederhana.
+
+    sla_due_at dihitung dari kategori saat tiket dibuat; status:
+    baru -> diproses -> menunggu -> selesai (atau ditutup).
+    """
+
+    __tablename__ = "helpdesk_tickets"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    requester_employment_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("employments.id"), nullable=False, index=True)
+    category: Mapped[str] = mapped_column(String(30), nullable=False)
+    subject: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False,
+                                        default="baru")
+    assignee_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True)
+    sla_due_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(),
+        onupdate=func.now())
+
+
+class HelpdeskMessage(Base):
+    """Pesan pada tiket helpdesk (EXP-023)."""
+
+    __tablename__ = "helpdesk_messages"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    ticket_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("helpdesk_tickets.id"), nullable=False, index=True)
+    author_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True)
+    author_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class KbArticle(Base):
+    """Artikel knowledge base helpdesk (EXP-023).
+
+    Ditampilkan sebelum karyawan membuat tiket (defleksi manual;
+    defleksi asisten AI ditunda mengikuti pola tanpa-AI).
+    """
+
+    __tablename__ = "kb_articles"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    category: Mapped[str] = mapped_column(String(30), nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    keywords: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(),
+        onupdate=func.now())

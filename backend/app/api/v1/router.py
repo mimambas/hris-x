@@ -17,6 +17,7 @@ from app.api.v1 import (
     dashboard,
     delegations,
     documents,
+    engagement,
     imports,
     inbox,
     job_info,
@@ -64,5 +65,6 @@ api_router.include_router(compensation.router)
 api_router.include_router(succession.router)
 api_router.include_router(delegations.router)
 api_router.include_router(inbox.router)
+api_router.include_router(engagement.router)
 api_router.include_router(dashboard.router)
 api_router.include_router(reports.router)

@@ -2259,3 +2259,163 @@ class InboxItemOut(BaseModel):
 class InboxOut(BaseModel):
     items: list[InboxItemOut]
     counts: dict[str, int]
+
+
+# ================================================== Engagement (PRD 13.3)
+class KudosCandidateOut(BaseModel):
+    employment_id: uuid.UUID
+    person_name: str
+
+
+class AnnouncementCreate(BaseModel):
+    title: str = Field(min_length=3, max_length=200)
+    body: str = Field(min_length=3)
+    target_type: str = Field(default="semua",
+                             pattern="^(semua|org_unit)$")
+    target_org_unit_id: uuid.UUID | None = None
+
+
+class AnnouncementOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    title: str
+    body: str
+    target_type: str
+    target_org_unit_id: uuid.UUID | None = None
+    org_unit_name: str | None = None
+    published_at: datetime
+    read_by_me: bool = False
+    read_count: int = 0
+    target_count: int = 0
+
+
+class AnnouncementReaderOut(BaseModel):
+    employment_id: uuid.UUID
+    person_name: str
+    read_at: datetime | None = None
+
+
+class SurveyCreate(BaseModel):
+    kind: str = Field(pattern="^(enps|pulse)$")
+    title: str = Field(min_length=3, max_length=200)
+    question: str = Field(min_length=5)
+
+
+class SurveyOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    kind: str
+    title: str
+    question: str
+    status: str  # aktif | ditutup
+    created_at: datetime
+    answered_by_me: bool = False
+    response_count: int = 0
+
+
+class SurveyAnswerCreate(BaseModel):
+    score: int
+    comment: str | None = Field(default=None, max_length=2000)
+
+
+class SurveyResultOut(BaseModel):
+    survey_id: uuid.UUID
+    kind: str
+    response_count: int
+    enough_responses: bool  # >= 5 responden (aturan PRD EXP-021)
+    average: float | None = None
+    enps: int | None = None  # hanya kind enps: promotor - detraktor
+    distribution: dict[str, int] = {}
+
+
+class KudosCreate(BaseModel):
+    to_employment_id: uuid.UUID
+    category: str = Field(
+        default="kolaborasi",
+        pattern="^(kolaborasi|inovasi|kepemimpinan|pelayanan|"
+                "keandalan|lainnya)$")
+    message: str = Field(min_length=3, max_length=1000)
+
+
+class KudosOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    from_employment_id: uuid.UUID
+    from_name: str | None = None
+    to_employment_id: uuid.UUID
+    to_name: str | None = None
+    category: str
+    message: str
+    visible_on_profile: bool = True
+    created_at: datetime
+
+
+class KudosVisibilityUpdate(BaseModel):
+    visible_on_profile: bool
+
+
+class TicketCreate(BaseModel):
+    category: str = Field(
+        pattern="^(payroll|cuti|absensi|dokumen|fasilitas|akun|sistem|"
+                "lainnya)$")
+    subject: str = Field(min_length=5, max_length=200)
+    description: str = Field(min_length=10)
+
+
+class TicketOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    requester_employment_id: uuid.UUID
+    requester_name: str | None = None
+    category: str
+    subject: str
+    description: str
+    status: str  # baru | diproses | menunggu | selesai | ditutup
+    assignee_user_id: uuid.UUID | None = None
+    sla_due_at: datetime | None = None
+    sla_breached: bool = False
+    resolved_at: datetime | None = None
+    created_at: datetime
+    message_count: int = 0
+
+
+class TicketMessageCreate(BaseModel):
+    body: str = Field(min_length=1)
+
+
+class TicketMessageOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    ticket_id: uuid.UUID
+    author_name: str
+    body: str
+    created_at: datetime
+
+
+class TicketStatusUpdate(BaseModel):
+    status: str = Field(pattern="^(diproses|menunggu|selesai|ditutup)$")
+
+
+class KbArticleCreate(BaseModel):
+    category: str = Field(
+        pattern="^(payroll|cuti|absensi|dokumen|fasilitas|akun|sistem|"
+                "lainnya)$")
+    title: str = Field(min_length=5, max_length=200)
+    body: str = Field(min_length=10)
+    keywords: str | None = Field(default=None, max_length=255)
+
+
+class KbArticleOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    category: str
+    title: str
+    body: str
+    keywords: str | None = None
+    created_at: datetime
