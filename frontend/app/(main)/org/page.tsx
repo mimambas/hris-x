@@ -3,12 +3,9 @@
 import { useEffect, useState } from "react";
 import { apiFetch, ApiError } from "@/lib/api";
 import type { OrgChartNode } from "@/lib/types";
-import { tanggal } from "@/lib/format";
+import { tanggal, todayISO } from "@/lib/format";
 import { PageHeader, Card, Spinner, ErrorBox, EmptyState } from "@/components/ui";
 
-function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 function TreeNode({ node, depth }: { node: OrgChartNode; depth: number }) {
   const [open, setOpen] = useState(depth < 2);

@@ -1,5 +1,19 @@
 // Format tanggal & angka Bahasa Indonesia.
 
+// ISO tanggal LOKAL (YYYY-MM-DD) dari objek Date. Jangan memakai
+// toISOString() untuk tanggal kalender: itu UTC, sehingga di zona
+// UTC+ (mis. Asia/Jakarta) tanggal bergeser sehari pada dini hari.
+export function localISO(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+export function todayISO(): string {
+  return localISO(new Date());
+}
+
 const rupiahFmt = new Intl.NumberFormat("id-ID", {
   style: "currency",
   currency: "IDR",

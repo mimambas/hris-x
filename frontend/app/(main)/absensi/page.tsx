@@ -9,7 +9,7 @@ import type {
   Me,
   Person,
 } from "@/lib/types";
-import { tanggal, tanggalWaktu, jamLokal, nowNaiveLocalISO, angka } from "@/lib/format";
+import { tanggal, tanggalWaktu, jamLokal, nowNaiveLocalISO, angka, todayISO } from "@/lib/format";
 import {
   PageHeader,
   Card,
@@ -50,9 +50,6 @@ function AttendanceChip({ status }: { status: string }) {
   );
 }
 
-function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 interface Row {
   employmentId: string;

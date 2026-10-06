@@ -2551,3 +2551,154 @@ class NotificationPreferenceEntry(BaseModel):
         pattern="^(pengumuman|kudos|helpdesk|perubahan_data|persetujuan)$")
     channel: str = Field(pattern="^(in_app|email|whatsapp)$")
     enabled: bool
+
+
+# ------------------------------------------------------- EXP-011 dasbor tim
+class TeamMemberStatusOut(BaseModel):
+    employment_id: uuid.UUID
+    person_name: str
+    status: str  # hadir | telat | cuti | tidak_hadir | belum_absen
+    check_in: datetime | None = None
+    late_minutes: int = 0
+    leave_type_name: str | None = None
+    overtime_hours_today: float = 0
+
+
+class TeamLeaveItemOut(BaseModel):
+    employment_id: uuid.UUID
+    person_name: str
+    leave_type_name: str
+    start_date: date
+    end_date: date
+
+
+class TeamDashboardOut(BaseModel):
+    date: date
+    team_size: int
+    present: int
+    late: int
+    on_leave: int
+    absent: int
+    not_checked_in: int
+    overtime_today_count: int
+    overtime_hours_today: float
+    pending_approvals: int
+    members: list[TeamMemberStatusOut]
+    on_leave_today: list[TeamLeaveItemOut]
+    upcoming_leave: list[TeamLeaveItemOut]
+
+
+# ------------------------------------------------- EXP-012 roster & swap
+class RosterDayOut(BaseModel):
+    date: date
+    shift_code: str | None = None
+    shift_name: str | None = None
+    start_time: str | None = None
+    end_time: str | None = None
+    is_overnight: bool = False
+
+
+class RosterMemberOut(BaseModel):
+    employment_id: uuid.UUID
+    person_name: str
+    days: list[RosterDayOut]
+
+
+class RosterOut(BaseModel):
+    start_date: date
+    end_date: date
+    members: list[RosterMemberOut]
+
+
+class ShiftSwapCreate(BaseModel):
+    partner_employment_id: uuid.UUID
+    swap_date: date
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class ShiftSwapOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    requester_employment_id: uuid.UUID
+    requester_name: str | None = None
+    partner_employment_id: uuid.UUID
+    partner_name: str | None = None
+    swap_date: date
+    requester_shift_name: str | None = None
+    partner_shift_name: str | None = None
+    reason: str | None = None
+    warnings: list[str] = Field(default_factory=list)
+    status: str
+    decision_reason: str | None = None
+    created_at: datetime
+
+
+class ShiftSwapDecision(BaseModel):
+    approve: bool
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class SwapCandidateOut(BaseModel):
+    employment_id: uuid.UUID
+    person_name: str
+    shift_name: str | None = None
+
+
+# ------------------------------------------------------- ANL-002 builder
+class ReportFilterIn(BaseModel):
+    field: str
+    op: str = "eq"
+    value: object | None = None
+
+
+class ReportRunIn(BaseModel):
+    object: str
+    fields: list[str] = Field(default_factory=list)
+    filters: list[ReportFilterIn] = Field(default_factory=list)
+    group_by: str | None = None
+    aggregate_fn: str | None = None
+    aggregate_field: str | None = None
+    sort_by: str | None = None
+    sort_dir: str = "asc"
+    limit: int = 500
+
+
+class ReportColumnOut(BaseModel):
+    key: str
+    label: str
+    type: str
+
+
+class ReportRunOut(BaseModel):
+    columns: list[ReportColumnOut]
+    rows: list[dict]
+    total_rows: int
+
+
+class ReportFieldOut(BaseModel):
+    key: str
+    label: str
+    type: str
+    sensitive: bool = False
+
+
+class ReportObjectOut(BaseModel):
+    key: str
+    label: str
+    fields: list[ReportFieldOut]
+
+
+class ReportDefinitionIn(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    spec: ReportRunIn
+
+
+class ReportDefinitionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    spec: dict
+    created_at: datetime
+    updated_at: datetime

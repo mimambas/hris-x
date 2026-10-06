@@ -21,6 +21,9 @@ from app.api.v1 import (
     payslip_access,
     data_changes,
     notifications,
+    team,
+    roster,
+    builder,
     imports,
     inbox,
     job_info,
@@ -72,5 +75,8 @@ api_router.include_router(engagement.router)
 api_router.include_router(payslip_access.router)
 api_router.include_router(data_changes.router)
 api_router.include_router(notifications.router)
+api_router.include_router(team.router)
+api_router.include_router(roster.router)
+api_router.include_router(builder.router)
 api_router.include_router(dashboard.router)
 api_router.include_router(reports.router)

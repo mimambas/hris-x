@@ -15,12 +15,9 @@ import {
 } from "recharts";
 import { apiFetch, ApiError } from "@/lib/api";
 import type { HeadcountResponse, TurnoverResponse } from "@/lib/types";
-import { angka, persen, tanggal, namaBulan, labelBulanSingkat } from "@/lib/format";
+import { angka, persen, tanggal, namaBulan, labelBulanSingkat, todayISO } from "@/lib/format";
 import { Card, PageHeader, Spinner, ErrorBox } from "@/components/ui";
 
-function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 // Nama bulan Bahasa Indonesia — <input type="month"> bawaan browser mengikuti
 // locale browser (bisa tampil "October 2026"), jadi pakai select manual.

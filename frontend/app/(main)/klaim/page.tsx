@@ -11,7 +11,7 @@ import type {
   Me,
   Person,
 } from "@/lib/types";
-import { rupiah, tanggal } from "@/lib/format";
+import { rupiah, tanggal, todayISO } from "@/lib/format";
 import {
   PageHeader,
   Card,
@@ -44,7 +44,7 @@ export default function KlaimPage() {
   const [claimTypeId, setClaimTypeId] = useState("");
   const [amount, setAmount] = useState("");
   const [claimDate, setClaimDate] = useState(
-    new Date().toISOString().slice(0, 10)
+    todayISO()
   );
   const [description, setDescription] = useState("");
   const [paidVia, setPaidVia] = useState("payroll");

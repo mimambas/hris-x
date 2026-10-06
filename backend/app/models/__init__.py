@@ -2886,3 +2886,74 @@ class NotificationPreference(Base):
         UniqueConstraint("user_id", "category", "channel",
                          name="uq_notif_pref_user_cat_channel"),
     )
+
+
+class ShiftSwapRequest(Base):
+    """Permintaan tukar shift satu hari antar karyawan (EXP-012).
+
+    Alur: diajukan -> persetujuan partner -> persetujuan atasan ->
+    diterapkan dengan memecah rentang ShiftAssignment masing-masing
+    dan menyisipkan penugasan satu hari berisi shift lawan. Warnings
+    memuat peringatan konflik roster (istirahat kurang, bentrok
+    lembur/cuti) yang dihitung saat pengajuan; peringatan tidak
+    memblokir, sesuai kriteria PRD "diperingatkan".
+    """
+
+    __tablename__ = "shift_swap_requests"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    requester_employment_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("employments.id"), nullable=False, index=True)
+    partner_employment_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("employments.id"), nullable=False, index=True)
+    swap_date: Mapped[date] = mapped_column(Date, nullable=False)
+    requester_shift_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("shifts.id"), nullable=False)
+    partner_shift_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("shifts.id"), nullable=False)
+    reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    warnings: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    # menunggu_partner | menunggu_atasan | disetujui | ditolak | dibatalkan
+    status: Mapped[str] = mapped_column(String(25), nullable=False,
+                                        default="menunggu_partner")
+    partner_decided_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True)
+    decided_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True)
+    decision_reason: Mapped[str | None] = mapped_column(
+        String(500), nullable=True)
+    decided_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True)
+    applied_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(),
+        onupdate=func.now())
+
+
+class ReportDefinition(Base):
+    """Definisi laporan tersimpan report builder (ANL-002).
+
+    spec memuat objek, field, filter, pengelompokan, dan urutan
+    dalam bentuk JSON terstruktur; dijalankan ulang terhadap katalog
+    terkurasi services/report_builder.py setiap kali dibuka, sehingga
+    perubahan izin RBP selalu berlaku (jadwal kirim menyusul setelah
+    kanal email tersedia).
+    """
+
+    __tablename__ = "report_definitions"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    owner_user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    spec: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(),
+        onupdate=func.now())

@@ -10,7 +10,7 @@ import type {
   OnboardingTemplate,
   Person,
 } from "@/lib/types";
-import { tanggal } from "@/lib/format";
+import { tanggal, todayISO } from "@/lib/format";
 import {
   PageHeader,
   Card,
@@ -71,7 +71,7 @@ export default function OnboardingPage() {
   const [startPerson, setStartPerson] = useState("");
   const [startTemplate, setStartTemplate] = useState("");
   const [startDate, setStartDate] = useState(
-    new Date().toISOString().slice(0, 10)
+    todayISO()
   );
   const [startKind, setStartKind] = useState<"onboarding" | "offboarding">(
     "onboarding"

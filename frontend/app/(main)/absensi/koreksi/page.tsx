@@ -7,7 +7,7 @@ import type {
   Employment,
   Person,
 } from "@/lib/types";
-import { tanggal, tanggalWaktuLokal, parseWaktuLokal } from "@/lib/format";
+import { tanggal, tanggalWaktuLokal, parseWaktuLokal, todayISO } from "@/lib/format";
 import {
   PageHeader,
   Card,
@@ -19,9 +19,6 @@ import {
   btnPrimary,
 } from "@/components/ui";
 
-function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 function toLocalInput(iso: string | null): string {
   if (!iso) return "";
