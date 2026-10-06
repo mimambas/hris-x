@@ -886,13 +886,18 @@ function AnalitikTab({ equity }: { equity: PayEquity | null }) {
                   <td className="py-2 font-medium">{r.grade_code} — {r.grade_name}</td>
                   <td>{r.gender}</td>
                   <td>{r.headcount}</td>
-                  <td>{rupiah(r.avg_salary)}</td>
-                  <td>{rupiah(r.median_salary)}</td>
+                  <td>{r.avg_salary !== null ? rupiah(r.avg_salary) : "—"}</td>
+                  <td>{r.median_salary !== null ? rupiah(r.median_salary) : "—"}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         )}
+        <p className="mt-3 text-xs text-slate-500">
+          Grup dengan kurang dari {equity.min_group ?? 5} orang tidak
+          menampilkan rata-rata/median demi privasi — pada grup sekecil
+          itu angka rata-rata sama dengan gaji individu.
+        </p>
       </Card>
       <Card>
         <h3 className="mb-3 font-semibold text-slate-900">Kesenjangan per Grade</h3>

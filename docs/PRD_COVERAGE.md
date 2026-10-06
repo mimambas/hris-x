@@ -56,7 +56,7 @@ dengan penyederhanaan tercatat. **Belum** = belum dibangun.
 | CMP-001 | Pay grade, salary band, compa-ratio | Live | |
 | CMP-002 | Siklus merit/bonus + guideline + approval | Live | Guideline = rating digeser compa-ratio (±2 poin). |
 | CMP-003 | Total rewards statement | Live | PDF; memakai konstanta BPJS employer payroll. |
-| CMP-004 | Analitik kesetaraan upah per level & gender | Live\* | `GET /compensation/analytics/pay-equity` (izin objek analitik): rata-rata & median gaji pokok per grade × gender + gap persen. **Utang hardening**: belum ada supresi grup kecil — rata-rata/median grup 1 orang membocorkan gaji individu ke pemegang izin. |
+| CMP-004 | Analitik kesetaraan upah per level & gender | Live | `GET /compensation/analytics/pay-equity` (izin objek analitik): rata-rata & median gaji pokok per grade × gender + gap persen. **Supresi grup kecil diterapkan (2026-10-06)**: grup <5 orang → rata-rata/median null + `suppressed: true`, gap hanya bila kedua grup ≥5 (`min_group: 5`); test statistik grup cukup + smoke staging lolos. |
 | CMP-005 | Hasil siklus → perubahan CompInfo efektif | Live\* | Siklus bonus difinalisasi tanpa mengubah CompInfo (dibayar via payroll terpisah). |
 | LRN-001 | Katalog kursus (PDF/video/tautan; SCORM F3) | Live\* | SCORM belum (terverifikasi tidak ada). |
 | LRN-002 | Penugasan wajib per peran/lokasi | Live | |
@@ -116,15 +116,12 @@ dengan penyederhanaan tercatat. **Belum** = belum dibangun.
 
 ## Sisa pekerjaan non-AI yang masih bisa dibangun
 
-1. **Hardening CMP-004** — supresi grup kecil pada analitik
-   kesetaraan upah yang sudah live (grup gender <5 orang per grade
-   tidak menampilkan statistik), plus test izin analitik.
-2. **PAY-014** final pay & pesangon per alasan PHK — menutup
+1. **PAY-014** final pay & pesangon per alasan PHK — menutup
    ONB-004 secara penuh; tabel pesangon/UPMK/UPH terkonfigurasi.
-3. **PAY-015** jurnal payroll per cost center (CSV debit=kredit).
-4. **PAY-016** simulasi payroll what-if (tanpa menyentuh data
+2. **PAY-015** jurnal payroll per cost center (CSV debit=kredit).
+3. **PAY-016** simulasi payroll what-if (tanpa menyentuh data
    produksi).
-5. **PRF-005** PIP formal; **REC-008** talent pool kandidat;
+4. **PRF-005** PIP formal; **REC-008** talent pool kandidat;
    **REC-002** halaman karier publik; **REC-006** asesmen mitra;
    **PAY-004/PAY-005** bukti potong non-tetap & DTP.
 

@@ -647,8 +647,9 @@ export interface PayEquityRow {
   grade_name: string | null;
   gender: string;
   headcount: number;
-  avg_salary: number;
-  median_salary: number;
+  avg_salary: number | null;
+  median_salary: number | null;
+  suppressed: boolean;
 }
 
 export interface PayEquity {
@@ -659,5 +660,7 @@ export interface PayEquity {
     avg_laki: number | null;
     avg_perempuan: number | null;
     gap_pct: number | null;
+    suppressed: boolean;
   }[];
+  min_group?: number;
 }

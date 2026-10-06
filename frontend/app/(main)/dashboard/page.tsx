@@ -115,10 +115,10 @@ function StatCard({
   hint?: string;
 }) {
   return (
-    <div className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
-      <p className="text-sm text-slate-500">{label}</p>
-      <p className="mt-1 text-3xl font-bold text-slate-900">{value}</p>
-      {hint && <p className="mt-1 text-xs text-slate-400">{hint}</p>}
+    <div className="rounded-2xl bg-white p-6 shadow-card ring-1 ring-slate-900/5">
+      <p className="text-sm font-medium text-slate-500">{label}</p>
+      <p className="mt-1.5 text-[32px] font-bold leading-none tracking-tight text-slate-900">{value}</p>
+      {hint && <p className="mt-2 text-xs leading-relaxed text-slate-400">{hint}</p>}
     </div>
   );
 }

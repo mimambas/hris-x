@@ -54,15 +54,18 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-900 px-4">
-      <div className="w-full max-w-sm rounded-2xl bg-white p-8 shadow-xl">
-        <div className="mb-6 text-center">
+    <div className="flex min-h-screen items-center justify-center bg-ink-950 px-4 py-10">
+      <div className="w-full max-w-md rounded-3xl bg-white p-8 shadow-pop sm:p-10">
+        <div className="mb-8 text-center">
+          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-600 text-xl font-bold text-white shadow-sm">
+            H
+          </div>
           <p className="text-2xl font-bold tracking-tight text-slate-900">HRIS-X</p>
           <p className="mt-1 text-sm text-slate-500">Masuk ke akun Anda</p>
         </div>
 
         {error && (
-          <div className="mb-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">
             {error}
           </div>
         )}
@@ -115,7 +118,7 @@ export default function LoginPage() {
                 type="button"
                 onClick={() => quickLogin(a.email)}
                 disabled={busy}
-                className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+                className="rounded-full border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 disabled:opacity-50"
               >
                 {a.label}{" "}
                 <span className="text-xs text-slate-400">({a.email})</span>

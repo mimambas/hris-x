@@ -61,13 +61,13 @@ export function NotificationBell() {
   return (
     <Link
       href="/profil"
-      className="relative flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white"
+      className="relative flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-base shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
       title="Notifikasi saya"
+      aria-label="Notifikasi saya"
     >
       <span aria-hidden>🔔</span>
-      <span className="flex-1">Notifikasi</span>
       {unread > 0 && (
-        <span className="rounded-full bg-rose-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
+        <span className="absolute -right-1 -top-1 rounded-full bg-rose-500 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white ring-2 ring-white">
           {unread > 99 ? "99+" : unread}
         </span>
       )}

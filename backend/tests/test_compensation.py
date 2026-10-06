@@ -264,11 +264,19 @@ def test_analitik_kesetaraan_izin_khusus(client, ctx):
     db.commit()
     r = client.get("/api/v1/compensation/analytics/pay-equity", headers=h)
     assert r.status_code == 200, r.text
-    rows = {(x["grade_code"], x["gender"]): x for x in r.json()["rows"]}
-    assert rows[("G5", "Laki-laki")]["avg_salary"] == 8_000_000
-    assert rows[("G5", "Perempuan")]["avg_salary"] == 10_000_000
-    gap = r.json()["gaps"][0]
-    assert gap["gap_pct"] == -25.0
+    body = r.json()
+    assert body["min_group"] == 5
+    rows = {(x["grade_code"], x["gender"]): x for x in body["rows"]}
+    # Grup 1 orang: statistik disembunyikan (kalau tidak, rata-rata =
+    # gaji persis orang itu). Jumlah anggota tetap tampil.
+    laki = rows[("G5", "Laki-laki")]
+    assert laki["headcount"] == 1 and laki["suppressed"] is True
+    assert laki["avg_salary"] is None and laki["median_salary"] is None
+    per = rows[("G5", "Perempuan")]
+    assert per["suppressed"] is True and per["avg_salary"] is None
+    gap = body["gaps"][0]
+    assert gap["suppressed"] is True
+    assert gap["avg_laki"] is None and gap["gap_pct"] is None
     # Manajer (punya izin compensation) tetap ditolak: izin khusus HR.
     _grant_mgr_comp(db, ctx)
     h_mgr = login_headers(client, "hashiru", "u_mgr@x.id")
@@ -276,6 +284,42 @@ def test_analitik_kesetaraan_izin_khusus(client, ctx):
                       headers=h_mgr).status_code == 403
     assert client.get("/api/v1/compensation/pay-grades",
                       headers=h_mgr).status_code == 200
+
+
+def test_analitik_kesetaraan_grup_cukup_statistik_tampil(client, ctx):
+    from tests.conftest import _mkperson_emp_job
+
+    h = _admin(client)
+    db = ctx["db"]
+    g = _buat_grade(client, h)
+    client.post("/api/v1/compensation/job-grades",
+                json={"job_id": str(ctx["job_stf"].id),
+                      "pay_grade_id": g["id"]}, headers=h)
+    admin = db.query(User).filter_by(email="admin_a@x.id").one()
+    gaji_l = [8_000_000, 9_000_000, 10_000_000, 11_000_000, 12_000_000]
+    gaji_p = [9_000_000, 9_000_000, 10_000_000, 10_000_000, 11_000_000]
+    for i, (gender, daftar) in enumerate((("L", gaji_l), ("P", gaji_p))):
+        for j, gaji in enumerate(daftar):
+            p, e, _ = _mkperson_emp_job(
+                db, ctx["ta"].id, f"88{i}{j}" + "0" * 12,
+                f"Uji {gender}{j}", ctx["le"].id, ctx["loc_b"].id,
+                ctx["job_stf"].id, ctx["ou"].id, admin.id)
+            p.gender = gender
+            db.commit()
+            _beri_gaji(db, ctx, e, gaji)
+    r = client.get("/api/v1/compensation/analytics/pay-equity", headers=h)
+    assert r.status_code == 200, r.text
+    rows = {(x["grade_code"], x["gender"]): x for x in r.json()["rows"]}
+    laki = rows[("G5", "Laki-laki")]
+    assert laki["headcount"] == 5 and laki["suppressed"] is False
+    assert laki["avg_salary"] == 10_000_000
+    assert laki["median_salary"] == 10_000_000
+    per = rows[("G5", "Perempuan")]
+    assert per["avg_salary"] == 9_800_000
+    assert per["median_salary"] == 10_000_000
+    gap = r.json()["gaps"][0]
+    assert gap["suppressed"] is False
+    assert gap["gap_pct"] == 2.0
 
 
 def test_isolasi_tenant(client, ctx):

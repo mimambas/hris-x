@@ -14,7 +14,19 @@ export default function RootLayout({
 }) {
   return (
     <html lang="id">
-      <body className="bg-slate-100 text-slate-900 antialiased">
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link
+          rel="preconnect"
+          href="https://fonts.gstatic.com"
+          crossOrigin="anonymous"
+        />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+          rel="stylesheet"
+        />
+      </head>
+      <body className="bg-mist font-sans text-slate-900 antialiased">
         <AuthProvider>{children}</AuthProvider>
       </body>
     </html>

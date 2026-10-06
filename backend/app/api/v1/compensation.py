@@ -1008,6 +1008,10 @@ def employee_total_rewards_pdf(employment_id: uuid.UUID,
 # ---------------------------------------------------------------------------
 
 _GENDER_LABEL = {"L": "Laki-laki", "P": "Perempuan"}
+# Di bawah ambang ini rata-rata/median grup membocorkan gaji
+# individu (grup 1 orang = gaji orang itu persis), jadi statistik
+# disembunyikan dan hanya jumlah anggota yang tampil.
+_MIN_EQUITY_GROUP = 5
 
 
 @router.get(
@@ -1028,22 +1032,31 @@ def pay_equity(user: User = Depends(get_current_user),
         grade_names[row.grade_code] = row.grade_name
     rows = []
     for (grade_code, gender), salaries in sorted(groups.items()):
+        enough = len(salaries) >= _MIN_EQUITY_GROUP
         rows.append(PayEquityRow(
             grade_code=grade_code, grade_name=grade_names.get(grade_code),
             gender=gender, headcount=len(salaries),
-            avg_salary=int(round(sum(salaries) / len(salaries))),
-            median_salary=int(median(salaries))))
+            avg_salary=(int(round(sum(salaries) / len(salaries)))
+                        if enough else None),
+            median_salary=(int(median(salaries)) if enough else None),
+            suppressed=not enough))
     gaps = []
     for grade_code in sorted({g for g, _ in groups}):
         laki = groups.get((grade_code, "Laki-laki"))
         per = groups.get((grade_code, "Perempuan"))
         if laki and per:
-            avg_l = sum(laki) / len(laki)
-            avg_p = sum(per) / len(per)
+            enough = (len(laki) >= _MIN_EQUITY_GROUP
+                      and len(per) >= _MIN_EQUITY_GROUP)
+            avg_l = sum(laki) / len(laki) if enough else None
+            avg_p = sum(per) / len(per) if enough else None
             gaps.append(PayEquityGap(
                 grade_code=grade_code,
                 grade_name=grade_names.get(grade_code),
-                avg_laki=int(round(avg_l)), avg_perempuan=int(round(avg_p)),
-                gap_pct=round((avg_l - avg_p) / avg_l * 100, 2)
-                if avg_l else None))
-    return PayEquityOut(rows=rows, gaps=gaps)
+                avg_laki=int(round(avg_l)) if avg_l is not None else None,
+                avg_perempuan=(int(round(avg_p))
+                               if avg_p is not None else None),
+                gap_pct=(round((avg_l - avg_p) / avg_l * 100, 2)
+                         if avg_l else None),
+                suppressed=not enough))
+    return PayEquityOut(rows=rows, gaps=gaps,
+                        min_group=_MIN_EQUITY_GROUP)

@@ -2001,8 +2001,9 @@ class PayEquityRow(BaseModel):
     grade_name: str | None
     gender: str
     headcount: int
-    avg_salary: int
-    median_salary: int
+    avg_salary: int | None
+    median_salary: int | None
+    suppressed: bool = False
 
 
 class PayEquityGap(BaseModel):
@@ -2011,11 +2012,13 @@ class PayEquityGap(BaseModel):
     avg_laki: int | None
     avg_perempuan: int | None
     gap_pct: float | None
+    suppressed: bool = False
 
 
 class PayEquityOut(BaseModel):
     rows: list[PayEquityRow]
     gaps: list[PayEquityGap]
+    min_group: int = 5
 
 
 # ---------------------------------------------------------------------------
