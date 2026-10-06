@@ -2957,3 +2957,30 @@ class ReportDefinition(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(),
         onupdate=func.now())
+
+
+class BiApiKey(Base):
+    """Kunci API ekspor data warehouse/BI (ANL-005).
+
+    Kunci dibuat pengguna dari halaman Report Builder; token
+    plaintext hanya tampil sekali saat dibuat, yang disimpan hanya
+    hash sha256. Ekspor memakai izin RBP + populasi pemilik kunci
+    persis seperti report builder, sehingga mencabut akses cukup
+    mencabut kunci ini atau mengubah peran pemiliknya.
+    """
+
+    __tablename__ = "bi_api_keys"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    owner_user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    key_hash: Mapped[str] = mapped_column(
+        String(64), nullable=False, index=True)
+    last_used_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now())

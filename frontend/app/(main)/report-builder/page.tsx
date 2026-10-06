@@ -56,6 +56,27 @@ interface Definition {
   updated_at: string;
 }
 
+interface BiDataset {
+  dataset: string;
+  label: string;
+  sync_field: string | null;
+  mode: string;
+  url: string;
+}
+
+interface BiKey {
+  id: string;
+  name: string;
+  last_used_at: string | null;
+  revoked_at: string | null;
+  created_at: string;
+}
+
+interface BiKeyCreated extends BiKey {
+  token: string;
+  token_hint: string;
+}
+
 const OPS: { key: string; label: string }[] = [
   { key: "eq", label: "sama dengan" },
   { key: "neq", label: "tidak sama" },
@@ -97,6 +118,76 @@ export default function ReportBuilderPage() {
   const [definitions, setDefinitions] = useState<Definition[]>([]);
   const [saving, setSaving] = useState(false);
   const [saveName, setSaveName] = useState("");
+
+  // Ekspor BI / data warehouse (ANL-005).
+  const [biDatasets, setBiDatasets] = useState<BiDataset[]>([]);
+  const [biKeys, setBiKeys] = useState<BiKey[]>([]);
+  const [biName, setBiName] = useState("");
+  const [biToken, setBiToken] = useState<string | null>(null);
+  const [biBusy, setBiBusy] = useState(false);
+  const [biError, setBiError] = useState<string | null>(null);
+
+  const loadBi = useCallback(async () => {
+    const [ds, ks] = await Promise.all([
+      apiFetch<BiDataset[]>("/bi/datasets").catch(() => []),
+      apiFetch<BiKey[]>("/bi/keys").catch(() => []),
+    ]);
+    setBiDatasets(ds);
+    setBiKeys(ks);
+  }, []);
+
+  useEffect(() => {
+    void loadBi();
+  }, [loadBi]);
+
+  async function createBiKey() {
+    if (!biName.trim()) return;
+    setBiBusy(true);
+    setBiError(null);
+    try {
+      const created = await apiFetch<BiKeyCreated>("/bi/keys", {
+        method: "POST",
+        body: JSON.stringify({ name: biName.trim() }),
+      });
+      setBiToken(created.token);
+      setBiName("");
+      await loadBi();
+    } catch (err) {
+      setBiError(err instanceof ApiError ? err.message : "Gagal membuat kunci BI.");
+    } finally {
+      setBiBusy(false);
+    }
+  }
+
+  async function revokeBiKey(k: BiKey) {
+    setBiError(null);
+    try {
+      await apiFetch(`/bi/keys/${k.id}`, { method: "DELETE" });
+      await loadBi();
+    } catch (err) {
+      setBiError(err instanceof ApiError ? err.message : "Gagal mencabut kunci.");
+    }
+  }
+
+  async function downloadBiCsv(d: BiDataset) {
+    try {
+      const base = getApiBase();
+      const res = await fetch(
+        `${base}/bi/exports/${d.dataset}?format=csv&limit=1000`,
+        { headers: { Authorization: `Bearer ${getToken() ?? ""}` } }
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `bi-${d.dataset}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      setBiError("Gagal mengunduh CSV dataset.");
+    }
+  }
 
   const currentObject = useMemo(
     () => catalog.find((o) => o.key === objectKey) ?? null,
@@ -608,6 +699,125 @@ export default function ReportBuilderPage() {
                 ))}
               </ul>
             )}
+          </Card>
+
+          <Card
+            title="Ekspor BI / Data Warehouse (ANL-005)"
+            subtitle="API tarik inkremental untuk Metabase, Looker Studio, Google Sheets, atau skrip ETL Anda."
+          >
+            <div className="space-y-4">
+              <p className="text-sm text-slate-600">
+                Dataset sama dengan objek report builder di atas dan selalu
+                menghormati izin RBP serta populasi Anda. Sinkron harian:
+                panggil URL dataset dengan parameter <code>since</code>{" "}
+                (tanggal/periode terakhir yang Anda simpan), lalu lakukan
+                upsert berdasarkan <code>employment_id</code> + penanda.
+                Karyawan adalah snapshot penuh (upsert berdasarkan nik).
+              </p>
+              {biError && <ErrorBox message={biError} />}
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs text-slate-400">
+                      <th className="py-1 pr-3 font-medium">Dataset</th>
+                      <th className="py-1 pr-3 font-medium">Mode</th>
+                      <th className="py-1 pr-3 font-medium">URL ekspor</th>
+                      <th className="py-1 pr-3 font-medium">Contoh</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {biDatasets.map((d) => (
+                      <tr key={d.dataset} className="border-t border-slate-100">
+                        <td className="py-1.5 pr-3 font-medium text-slate-800">
+                          {d.label}
+                        </td>
+                        <td className="py-1.5 pr-3 text-slate-600">
+                          {d.mode}
+                          {d.sync_field ? ` · since: ${d.sync_field}` : ""}
+                        </td>
+                        <td className="py-1.5 pr-3 font-mono text-xs text-slate-600">
+                          GET {d.url}
+                          {d.sync_field ? `?since=2026-01-01` : ""}
+                        </td>
+                        <td className="py-1.5 pr-3">
+                          <button className={btnSmall} onClick={() => void downloadBiCsv(d)}>
+                            Unduh CSV
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="border-t border-slate-100 pt-3">
+                <p className="mb-2 text-sm font-medium text-slate-800">
+                  Kunci API BI saya
+                </p>
+                <p className="mb-3 text-xs text-slate-500">
+                  Alat eksternal memakai header{" "}
+                  <code>X-BI-Key: &lt;token&gt;</code> alih-alih login Anda.
+                  Token hanya ditampilkan satu kali saat dibuat; yang
+                  tersimpan di server hanya hash-nya. Cabut kunci bila
+                  tidak dipakai lagi.
+                </p>
+                <div className="mb-3 flex flex-wrap items-center gap-2">
+                  <input
+                    className={`${inputCls} max-w-xs`}
+                    placeholder="Nama kunci, mis. Metabase kantor"
+                    maxLength={120}
+                    value={biName}
+                    onChange={(e) => setBiName(e.target.value)}
+                  />
+                  <button
+                    className={btnPrimary}
+                    disabled={biBusy || !biName.trim()}
+                    onClick={() => void createBiKey()}
+                  >
+                    {biBusy ? "Membuat…" : "Buat kunci"}
+                  </button>
+                </div>
+                {biToken && (
+                  <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+                    <p className="mb-1 text-xs font-semibold text-amber-800">
+                      Simpan token ini sekarang — tidak akan ditampilkan lagi:
+                    </p>
+                    <p className="break-all font-mono text-xs text-amber-900">
+                      {biToken}
+                    </p>
+                  </div>
+                )}
+                {biKeys.length === 0 ? (
+                  <EmptyState message="Belum ada kunci API BI." />
+                ) : (
+                  <ul className="divide-y divide-slate-100">
+                    {biKeys.map((k) => (
+                      <li key={k.id} className="flex flex-wrap items-center gap-2 py-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium text-slate-800">
+                            {k.name}
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            Dibuat{" "}
+                            {new Date(k.created_at).toLocaleDateString("id-ID")}
+                            {k.last_used_at
+                              ? ` · terakhir dipakai ${new Date(k.last_used_at).toLocaleDateString("id-ID")}`
+                              : " · belum pernah dipakai"}
+                            {k.revoked_at ? " · sudah dicabut" : " · aktif"}
+                          </p>
+                        </div>
+                        {!k.revoked_at && (
+                          <button className={btnSmall} onClick={() => void revokeBiKey(k)}>
+                            Cabut
+                          </button>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
           </Card>
         </>
       )}

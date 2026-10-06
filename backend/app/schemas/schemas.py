@@ -2746,3 +2746,35 @@ class Bpa1SummaryOut(BaseModel):
     year: int
     rows: list[Bpa1RowOut]
     employers: list[Bpa1EmployerOut]
+
+
+# ---------------------------------------------------------------------------
+# Ekspor BI / data warehouse (ANL-005)
+# ---------------------------------------------------------------------------
+
+
+class BiDatasetOut(BaseModel):
+    dataset: str
+    label: str
+    sync_field: str | None
+    mode: str
+    url: str
+
+
+class BiKeyCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+
+
+class BiKeyOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    last_used_at: datetime | None
+    revoked_at: datetime | None
+    created_at: datetime
+
+
+class BiKeyCreatedOut(BiKeyOut):
+    token: str
+    token_hint: str
