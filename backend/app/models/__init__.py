@@ -2984,3 +2984,104 @@ class BiApiKey(Base):
         DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+# ---------------------------------------------------------------------------
+# PAY-014: Final pay & pesangon. Tabel bracket masa kerja dan faktor
+# per alasan terminasi TERKONFIGURASI per tenant (dapat diganti saat
+# aturan ketenagakerjaan berubah); nilai bawaan mengikuti PP 35/2021
+# Pasal 40 dan faktor pengali alasan PHK pada pasal-pasal terkait.
+# ---------------------------------------------------------------------------
+class SeveranceBracket(Base):
+    """Bracket masa kerja -> jumlah bulan upah (pesangon / UPMK)."""
+
+    __tablename__ = "severance_brackets"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    component: Mapped[str] = mapped_column(String(20), nullable=False)  # pesangon | upmk
+    min_years: Mapped[float] = mapped_column(Numeric(6, 2), nullable=False)
+    max_years: Mapped[float | None] = mapped_column(Numeric(6, 2), nullable=True)
+    months: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "component", "min_years",
+            name="uq_sevbracket_tenant_comp_min",
+        ),
+        Index("ix_sevbracket_tenant_comp", "tenant_id", "component"),
+    )
+
+
+class SeveranceReasonFactor(Base):
+    """Faktor pengali per alasan terminasi (teks alasan katalog lifecycle)."""
+
+    __tablename__ = "severance_reason_factors"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    reason: Mapped[str] = mapped_column(String(255), nullable=False)
+    pesangon_factor: Mapped[float] = mapped_column(
+        Numeric(6, 3), nullable=False, default=1.0
+    )
+    upmk_factor: Mapped[float] = mapped_column(
+        Numeric(6, 3), nullable=False, default=1.0
+    )
+    uph_included: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # True -> komponen pesangon diganti uang kompensasi PKWT
+    # (masa kerja/12 x upah sebulan, PP 35/2021 untuk PKWT berakhir).
+    pkwt_compensation: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "reason", name="uq_sevfactor_tenant_reason"),
+        Index("ix_sevfactor_tenant", "tenant_id"),
+    )
+
+
+class FinalPay(Base):
+    """Satu perhitungan pembayaran akhir per employment yang berakhir.
+
+    Snapshot penuh disimpan (upah, masa kerja, rincian komponen) agar
+    angka tidak berubah saat tabel konfigurasi atau gaji diperbarui.
+    Status: draft -> finalized -> paid. Draft dapat dihapus.
+    """
+
+    __tablename__ = "final_pays"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    employment_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("employments.id"), nullable=False, index=True
+    )
+    termination_date: Mapped[date] = mapped_column(Date, nullable=False)
+    reason: Mapped[str] = mapped_column(String(255), nullable=False)
+    years_of_service: Mapped[float] = mapped_column(Numeric(8, 3), nullable=False)
+    monthly_wage: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Rincian: {sisa_gaji, sisa_cuti_hari, sisa_cuti, pesangon_bulan,
+    # pesangon, upmk_bulan, upmk, kompensasi_pkwt, adjustments:[...],
+    # faktor & bracket yang dipakai}
+    breakdown: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    gross_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    loan_deduction: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    tax_amount: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    net_amount: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="draft")
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    finalized_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    paid_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    __table_args__ = (
+        Index("ix_finalpay_tenant_emp", "tenant_id", "employment_id"),
+    )

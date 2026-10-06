@@ -2797,3 +2797,113 @@ class TalentCandidateOut(BaseModel):
     employment_id: uuid.UUID
     person_id: uuid.UUID
     person_name: str
+
+
+# ---------------------------------------------------------------------------
+# PAY-014: Final pay & pesangon (prefix PayFinal)
+# ---------------------------------------------------------------------------
+class PayFinalBracketOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    component: str
+    min_years: float
+    max_years: float | None
+    months: int
+
+
+class PayFinalReasonFactorOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    reason: str
+    pesangon_factor: float
+    upmk_factor: float
+    uph_included: bool
+    pkwt_compensation: bool
+
+
+class PayFinalConfigOut(BaseModel):
+    brackets: list[PayFinalBracketOut]
+    reason_factors: list[PayFinalReasonFactorOut]
+
+
+class PayFinalBracketIn(BaseModel):
+    component: str = Field(pattern="^(pesangon|upmk)$")
+    min_years: float = Field(ge=0, le=80)
+    max_years: float | None = Field(default=None, ge=0, le=100)
+    months: int = Field(ge=0, le=60)
+
+
+class PayFinalReasonFactorIn(BaseModel):
+    reason: str = Field(min_length=1, max_length=255)
+    pesangon_factor: float = Field(ge=0, le=5)
+    upmk_factor: float = Field(ge=0, le=5)
+    uph_included: bool = True
+    pkwt_compensation: bool = False
+
+
+class PayFinalConfigIn(BaseModel):
+    brackets: list[PayFinalBracketIn] = Field(min_length=1, max_length=60)
+    reason_factors: list[PayFinalReasonFactorIn] = Field(min_length=1, max_length=40)
+
+
+class PayFinalAdjustmentIn(BaseModel):
+    label: str = Field(min_length=1, max_length=200)
+    amount: int = Field(ge=-2_000_000_000, le=2_000_000_000)
+
+
+class PayFinalPreviewIn(BaseModel):
+    employment_id: uuid.UUID
+    reason: str | None = Field(default=None, max_length=255)
+    termination_date: date | None = None
+    adjustments: list[PayFinalAdjustmentIn] = Field(default_factory=list)
+
+
+class PayFinalCreateIn(PayFinalPreviewIn):
+    notes: str | None = Field(default=None, max_length=2000)
+
+
+class PayFinalOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    employment_id: uuid.UUID
+    person_name: str | None = None
+    termination_date: date
+    reason: str
+    years_of_service: float
+    monthly_wage: int
+    breakdown: dict
+    gross_total: int
+    loan_deduction: int
+    tax_amount: int
+    net_amount: int
+    status: str
+    notes: str | None
+    created_at: datetime
+    finalized_at: datetime | None
+    paid_at: datetime | None
+
+
+class PayFinalPreviewOut(BaseModel):
+    employment_id: uuid.UUID
+    person_name: str | None = None
+    termination_date: date
+    reason: str
+    years_of_service: float
+    monthly_wage: int
+    breakdown: dict
+    gross_total: int
+    loan_deduction: int
+    tax_amount: int
+    net_amount: int
+
+
+class PayFinalCandidateOut(BaseModel):
+    employment_id: uuid.UUID
+    person_id: uuid.UUID
+    person_name: str
+    termination_date: date | None
+    reason: str | None
+    has_final_pay: bool

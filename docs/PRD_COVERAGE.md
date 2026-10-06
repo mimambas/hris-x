@@ -27,7 +27,7 @@ dengan penyederhanaan tercatat. **Belum** = belum dibangun.
 | PAY-011 | Slip digital (PIN), riwayat, unduh BPA1 | Live | PIN slip + PDF BPA1 ber-PIN sama; tanpa tanda tangan digital. |
 | PAY-012 | File transfer bank (BCA/Mandiri/BRI/BNI) | Live\* | CSV generik; format spesifik per bank belum. |
 | PAY-013 | Retro pay dari perubahan berlaku mundur | Live\* | Selisih sebulan penuh; prorata per periode belum. |
-| PAY-014 | Final pay (pesangon/UPMK/UPH per alasan PHK) | Belum | Terminasi belum menghitung komponen final pay. |
+| PAY-014 | Final pay (pesangon/UPMK/UPH per alasan PHK) | Live | Tabel pesangon/UPMK & faktor alasan terkonfigurasi per tenant (bawaan PP 35/2021); snapshot hitungan penuh, pajak final berlapis, alur draf→final→dibayar (migrasi 014). |
 | PAY-015 | Jurnal payroll per cost center | Belum | Model cost center ada; jurnal belum dibuat. |
 | PAY-016 | Simulasi payroll what-if | Belum | |
 
@@ -46,7 +46,7 @@ dengan penyederhanaan tercatat. **Belum** = belum dibangun.
 | ONB-001 | Portal preboarding dokumen & BPJS | Live | |
 | ONB-002 | Checklist lintas tim + tenggat | Live\* | Eskalasi otomatis keterlambatan belum. |
 | ONB-003 | Buddy, agenda, kursus wajib | Live\* | Buddy ada; agenda minggu pertama otomatis parsial. |
-| ONB-004 | Offboarding (clearance, final pay, paklaring) | Live\* | Final pay mengikuti keterbatasan PAY-014. |
+| ONB-004 | Offboarding (clearance, final pay, paklaring) | Live | Final pay kini dihitung penuh lewat PAY-014. |
 | PRF-001 | Library goal; OKR/KPI berbobot | Live\* | Tanpa cascading OKR. |
 | PRF-002 | Check-in & continuous feedback | Live | |
 | PRF-003 | Template review self/atasan/360 | Live\* | Tanpa 360°/peer review; skor self tidak masuk final. |
@@ -116,12 +116,10 @@ dengan penyederhanaan tercatat. **Belum** = belum dibangun.
 
 ## Sisa pekerjaan non-AI yang masih bisa dibangun
 
-1. **PAY-014** final pay & pesangon per alasan PHK — menutup
-   ONB-004 secara penuh; tabel pesangon/UPMK/UPH terkonfigurasi.
-2. **PAY-015** jurnal payroll per cost center (CSV debit=kredit).
-3. **PAY-016** simulasi payroll what-if (tanpa menyentuh data
+1. **PAY-015** jurnal payroll per cost center (CSV debit=kredit).
+2. **PAY-016** simulasi payroll what-if (tanpa menyentuh data
    produksi).
-4. **PRF-005** PIP formal; **REC-008** talent pool kandidat;
+3. **PRF-005** PIP formal; **REC-008** talent pool kandidat;
    **REC-002** halaman karier publik; **REC-006** asesmen mitra;
    **PAY-004/PAY-005** bukti potong non-tetap & DTP.
 

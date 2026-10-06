@@ -42,6 +42,7 @@ export const NAV_GROUPS: { title: string | null; items: { href: string; label: s
     title: "Penggajian & Manfaat",
     items: [
       { href: "/slip", label: "Slip Gaji", icon: "🧾" },
+      { href: "/final-pay", label: "Final Pay & Pesangon", icon: "📤" },
       { href: "/klaim", label: "Klaim", icon: "💸" },
       { href: "/klaim/persetujuan", label: "Persetujuan Klaim", icon: "✅" },
       { href: "/pinjaman", label: "Pinjaman", icon: "🏦" },

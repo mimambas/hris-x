@@ -664,3 +664,89 @@ export interface PayEquity {
   }[];
   min_group?: number;
 }
+
+// ---------------------------------------------------------------------------
+// PAY-014: Final pay & pesangon
+// ---------------------------------------------------------------------------
+export interface PayFinalBracket {
+  id: string;
+  component: string; // pesangon | upmk
+  min_years: number;
+  max_years: number | null;
+  months: number;
+}
+
+export interface PayFinalReasonFactor {
+  id: string;
+  reason: string;
+  pesangon_factor: number;
+  upmk_factor: number;
+  uph_included: boolean;
+  pkwt_compensation: boolean;
+}
+
+export interface PayFinalConfig {
+  brackets: PayFinalBracket[];
+  reason_factors: PayFinalReasonFactor[];
+}
+
+export interface PayFinalBreakdown {
+  sisa_gaji: number;
+  hari_kerja_terpakai: number;
+  hari_kerja_sebulan: number;
+  sisa_cuti_hari: number;
+  sisa_cuti: number;
+  pesangon_bulan: number;
+  pesangon_faktor: number;
+  pesangon: number;
+  upmk_bulan: number;
+  upmk_faktor: number;
+  upmk: number;
+  kompensasi_pkwt: number;
+  uph_termasuk: boolean;
+  faktor_sumber: string;
+  adjustments: { label: string; amount: number }[];
+}
+
+export interface PayFinal {
+  id: string;
+  employment_id: string;
+  person_name: string | null;
+  termination_date: string;
+  reason: string;
+  years_of_service: number;
+  monthly_wage: number;
+  breakdown: PayFinalBreakdown;
+  gross_total: number;
+  loan_deduction: number;
+  tax_amount: number;
+  net_amount: number;
+  status: string; // draft | finalized | paid
+  notes: string | null;
+  created_at: string;
+  finalized_at: string | null;
+  paid_at: string | null;
+}
+
+export interface PayFinalPreview {
+  employment_id: string;
+  person_name: string | null;
+  termination_date: string;
+  reason: string;
+  years_of_service: number;
+  monthly_wage: number;
+  breakdown: PayFinalBreakdown;
+  gross_total: number;
+  loan_deduction: number;
+  tax_amount: number;
+  net_amount: number;
+}
+
+export interface PayFinalCandidate {
+  employment_id: string;
+  person_id: string;
+  person_name: string;
+  termination_date: string | null;
+  reason: string | null;
+  has_final_pay: boolean;
+}

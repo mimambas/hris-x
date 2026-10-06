@@ -18,6 +18,7 @@ from app.api.v1 import (
     delegations,
     documents,
     engagement,
+    final_pay,
     payslip_access,
     bpa1,
     bi,
@@ -84,3 +85,4 @@ api_router.include_router(roster.router)
 api_router.include_router(builder.router)
 api_router.include_router(dashboard.router)
 api_router.include_router(reports.router)
+api_router.include_router(final_pay.router)

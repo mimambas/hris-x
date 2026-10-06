@@ -95,7 +95,8 @@ BEGIN
             'helpdesk_messages', 'kb_articles', 'payslip_pins',
             'data_change_requests', 'notifications',
             'notification_preferences', 'shift_swap_requests',
-            'report_definitions', 'bi_api_keys'
+            'report_definitions', 'bi_api_keys',
+            'severance_brackets', 'severance_reason_factors', 'final_pays'
           )
     LOOP
         -- Isolasi tenant: baris hanya terlihat bila tenant_id cocok.
