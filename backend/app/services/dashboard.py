@@ -16,7 +16,7 @@ Definisi metrik baku (ANL-004):
 from __future__ import annotations
 
 from calendar import monthrange
-from datetime import date
+from datetime import date, timedelta
 from io import BytesIO
 
 from sqlalchemy import and_, extract, func, or_, select
@@ -588,3 +588,148 @@ def build_payroll_summary_xlsx(db: Session, tenant_id, period: str,
     buf = BytesIO()
     wb.save(buf)
     return buf.getvalue()
+
+
+# ---------------------------------------------------------------------------
+# 4. Metrik baku (ANL-004) dan dasbor per peran (ANL-003)
+# ---------------------------------------------------------------------------
+def standard_metrics(db: Session, tenant_id, period: str,
+                     person_ids: set | None = None) -> dict:
+    """Delapan metrik baku PRD 13.4 untuk satu periode YYYY-MM.
+
+    Definisi mengikuti tabel ANL-004 secara harfiah. Dua keterbatasan
+    data dinyatakan terbuka: voluntary turnover belum dapat dibedakan
+    karena alasan keluar belum terklasifikasi pada data kejadian, dan
+    biaya tenaga kerja memakai gaji kotor baris slip karena iuran
+    perusahaan tidak disimpan terpisah per baris.
+    """
+    import calendar as _calendar
+
+    from app.models import JobApplication as _Application
+    from app.models import JobPosting as _Posting
+    from app.models import JobRequisition as _Requisition
+    from app.models import Offer as _Offer
+    from app.models import OvertimeRequest
+
+    first, last = parse_period(period)
+    days_in_month = _calendar.monthrange(first.year, first.month)[1]
+    workdays = sum(
+        1 for d in range(1, days_in_month + 1)
+        if date(first.year, first.month, d).weekday() < 5)
+    hc_start = headcount_total(db, tenant_id, first, person_ids)
+    hc_end = headcount_total(db, tenant_id, last, person_ids)
+    avg_hc = (hc_start + hc_end) / 2
+
+    att = attendance_dashboard(db, tenant_id, period, person_ids)
+    absent_days = att["absent_days"]
+    scheduled = workdays * avg_hc
+    absenteeism = round(absent_days / scheduled * 100, 2) if scheduled else 0.0
+
+    emp_stmt = select(OvertimeRequest).where(
+        OvertimeRequest.tenant_id == tenant_id,
+        OvertimeRequest.status == "approved",
+        OvertimeRequest.date >= first,
+        OvertimeRequest.date <= last)
+    if person_ids is not None:
+        emp_stmt = emp_stmt.join(
+            Employment, Employment.id == OvertimeRequest.employment_id
+        ).where(Employment.person_id.in_(person_ids))
+    overtime_hours = float(sum(
+        (r.hours or 0) for r in db.execute(emp_stmt).scalars().all()))
+    normal_hours = avg_hc * workdays * 8
+    overtime_ratio = (round(overtime_hours / normal_hours * 100, 2)
+                      if normal_hours else 0.0)
+
+    payroll = payroll_dashboard(db, tenant_id, period, person_ids)
+    gross_total = payroll["totals"]["gross"] if payroll else 0
+    labor_cost = round(gross_total / avg_hc) if avg_hc else 0
+
+    # Time to fill: requisition disetujui -> offer diterima, pada
+    # offer yang diterima dalam periode.
+    ttf_days: list[float] = []
+    offers = db.execute(
+        select(_Offer).where(
+            _Offer.tenant_id == tenant_id,
+            _Offer.status == "accepted",
+            _Offer.decided_at.is_not(None))
+    ).scalars().all()
+    for offer in offers:
+        decided = offer.decided_at.date() \
+            if hasattr(offer.decided_at, "date") else offer.decided_at
+        if decided is None or not (first <= decided <= last):
+            continue
+        app_row = db.get(_Application, offer.application_id)
+        if app_row is None:
+            continue
+        posting = db.get(_Posting, app_row.posting_id)
+        if posting is None:
+            continue
+        req = db.get(_Requisition, posting.requisition_id)
+        if req is None or req.decided_at is None:
+            continue
+        req_date = req.decided_at.date() \
+            if hasattr(req.decided_at, "date") else req.decided_at
+        delta = (decided - req_date).days
+        if delta >= 0:
+            ttf_days.append(delta)
+    time_to_fill = round(sum(ttf_days) / len(ttf_days), 1) if ttf_days \
+        else None
+
+    # Retensi 90 hari: kohort mulai 90-180 hari sebelum akhir periode.
+    cohort_start = last - timedelta(days=180)
+    cohort_end = last - timedelta(days=90)
+    cohort_stmt = select(Employment).where(
+        Employment.tenant_id == tenant_id,
+        Employment.start_date >= cohort_start,
+        Employment.start_date <= cohort_end)
+    if person_ids is not None:
+        cohort_stmt = cohort_stmt.where(
+            Employment.person_id.in_(person_ids))
+    cohort = db.execute(cohort_stmt).scalars().all()
+    still_active = sum(1 for e in cohort if e.status == "active")
+    retention_90 = (round(still_active / len(cohort) * 100, 2)
+                    if cohort else None)
+
+    turnover_data = turnover(db, tenant_id, period, person_ids)
+    return {
+        "period": period,
+        "workdays": workdays,
+        "avg_headcount": avg_hc,
+        "turnover_rate_pct": turnover_data["rate_pct"],
+        "terminated": turnover_data["terminated"],
+        "voluntary_turnover_pct": None,
+        "absenteeism_rate_pct": absenteeism,
+        "absent_days": absent_days,
+        "late_rate_pct": att["late_pct"],
+        "overtime_hours": overtime_hours,
+        "overtime_ratio_pct": overtime_ratio,
+        "labor_cost_per_employee": labor_cost,
+        "payroll_run_available": payroll is not None,
+        "time_to_fill_days": time_to_fill,
+        "retention_90_pct": retention_90,
+        "definitions": {
+            "turnover_rate": "Karyawan keluar dalam periode / rata-rata "
+                             "headcount periode x 100%.",
+            "voluntary_turnover": "Belum terklasifikasi: alasan keluar "
+                                  "belum dibedakan sukarela/tidak pada "
+                                  "data kejadian kepegawaian.",
+            "absenteeism_rate": "Hari tidak hadir tanpa cuti / hari "
+                                "kerja terjadwal (hari kerja x rata-rata "
+                                "headcount) x 100%.",
+            "late_rate": "Absen masuk terlambat / total absen masuk "
+                         "x 100% (dari record tercatat).",
+            "overtime_ratio": "Jam lembur disetujui / jam kerja normal "
+                              "(rata-rata headcount x hari kerja x 8) "
+                              "x 100%.",
+            "labor_cost_per_employee": "Total gaji kotor periode / "
+                                       "rata-rata headcount. Iuran "
+                                       "perusahaan belum disimpan "
+                                       "terpisah per baris slip.",
+            "time_to_fill": "Rata-rata hari dari requisition disetujui "
+                            "sampai offer diterima (offer diterima dalam "
+                            "periode).",
+            "retention_90": "Karyawan baru (kohort mulai 90-180 hari "
+                            "sebelum akhir periode) yang masih aktif / "
+                            "total kohort x 100%.",
+        },
+    }

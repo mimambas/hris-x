@@ -39,6 +39,36 @@ interface DownloadTarget {
   employmentId: string;
   period: string;
   nik: string;
+  kind?: "slip" | "bpa1";
+  year?: number;
+}
+
+interface Bpa1Row {
+  employment_id: string;
+  person_name: string;
+  nik: string;
+  nik_valid: boolean;
+  ptkp: string;
+  position: string;
+  month_start: number;
+  month_end: number;
+  months_count: number;
+  status: string;
+  gross_total: number;
+  pph21_withheld: number;
+  take_home_total: number;
+}
+
+interface Bpa1Employer {
+  legal_entity_id: string | null;
+  employees: number;
+  npwp: string | null;
+}
+
+interface Bpa1Summary {
+  year: number;
+  rows: Bpa1Row[];
+  employers: Bpa1Employer[];
 }
 
 type PinMode = "buat" | "masuk" | "ganti";
@@ -65,6 +95,14 @@ export default function SlipPage() {
   const [mySlips, setMySlips] = useState<MySlip[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
   const [pageError, setPageError] = useState<string | null>(null);
+
+  // BPA1 (bukti potong tahunan).
+  const currentYear = new Date().getFullYear();
+  const [bpa1Year, setBpa1Year] = useState(currentYear);
+  const [bpa1, setBpa1] = useState<Bpa1Summary | null>(null);
+  const [bpa1Loading, setBpa1Loading] = useState(false);
+  const [bpa1Error, setBpa1Error] = useState<string | null>(null);
+  const [xmlBusy, setXmlBusy] = useState<string | null>(null);
 
   // Modal PIN.
   const [pinMode, setPinMode] = useState<PinMode | null>(null);
@@ -145,13 +183,21 @@ export default function SlipPage() {
   }
 
   async function doDownload(target: DownloadTarget, pin: string | null) {
-    setDlBusy(target.employmentId);
+    setDlBusy(target.employmentId + (target.kind ?? "slip"));
     try {
-      await apiDownload(
-        `/payroll/runs/${target.runId}/payslip/${target.employmentId}.pdf`,
-        `slip-${target.period}-${target.nik}.pdf`,
-        pin ? { "X-Payslip-Pin": pin } : {}
-      );
+      if (target.kind === "bpa1" && target.year) {
+        await apiDownload(
+          `/bpa1/${target.employmentId}.pdf?year=${target.year}`,
+          `bpa1-${target.year}-${target.nik}.pdf`,
+          pin ? { "X-Payslip-Pin": pin } : {}
+        );
+      } else {
+        await apiDownload(
+          `/payroll/runs/${target.runId}/payslip/${target.employmentId}.pdf`,
+          `slip-${target.period}-${target.nik}.pdf`,
+          pin ? { "X-Payslip-Pin": pin } : {}
+        );
+      }
     } finally {
       setDlBusy(null);
     }
@@ -192,6 +238,81 @@ export default function SlipPage() {
       period: slip.period,
       nik: slip.nik,
     });
+  }
+
+  function downloadBpa1Mine() {
+    if (!myEmploymentId) return;
+    openPinFlow({
+      runId: "",
+      employmentId: myEmploymentId,
+      period: "",
+      nik: mySlips[0]?.nik ?? "",
+      kind: "bpa1",
+      year: bpa1Year,
+    });
+  }
+
+  const loadBpa1 = useCallback(async (year: number) => {
+    setBpa1Loading(true);
+    setBpa1Error(null);
+    try {
+      setBpa1(await apiFetch<Bpa1Summary>(`/bpa1/summary?year=${year}`));
+    } catch (err) {
+      setBpa1(null);
+      setBpa1Error(
+        err instanceof ApiError ? err.message : "Gagal memuat ringkasan BPA1."
+      );
+    } finally {
+      setBpa1Loading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (canViewAll) void loadBpa1(bpa1Year);
+  }, [canViewAll, bpa1Year, loadBpa1]);
+
+  async function exportXml(employer: Bpa1Employer) {
+    if (!employer.legal_entity_id) return;
+    setXmlBusy(employer.legal_entity_id);
+    setBpa1Error(null);
+    try {
+      await apiDownload(
+        `/bpa1/export.xml?year=${bpa1Year}&legal_entity_id=${employer.legal_entity_id}`,
+        `bpa1-${bpa1Year}.xml`,
+        {}
+      );
+      setNotice(
+        `XML BPA1 ${bpa1Year} terunduh. Berkas ini mengikuti struktur template resmi DJP dan siap diperiksa/diunggah ke Coretax.`
+      );
+    } catch (err) {
+      setBpa1Error(
+        err instanceof ApiError ? err.message : "Ekspor XML gagal."
+      );
+    } finally {
+      setXmlBusy(null);
+    }
+  }
+
+  async function downloadBpa1Row(row: Bpa1Row) {
+    const target: DownloadTarget = {
+      runId: "",
+      employmentId: row.employment_id,
+      period: "",
+      nik: row.nik,
+      kind: "bpa1",
+      year: bpa1Year,
+    };
+    if (myEmploymentId && row.employment_id === myEmploymentId) {
+      openPinFlow(target);
+      return;
+    }
+    try {
+      await doDownload(target, null);
+    } catch (err) {
+      setPageError(
+        err instanceof ApiError ? err.message : "Gagal mengunduh BPA1."
+      );
+    }
   }
 
   async function submitPin() {
@@ -315,6 +436,35 @@ export default function SlipPage() {
                 ))}
               </ul>
             )}
+            <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
+              <span className="text-xs font-medium text-slate-600">
+                Bukti potong tahunan (BPA1):
+              </span>
+              <select
+                className={`${inputCls} max-w-[110px]`}
+                value={bpa1Year}
+                onChange={(e) => setBpa1Year(Number(e.target.value))}
+                aria-label="Tahun pajak BPA1"
+              >
+                {[currentYear, currentYear - 1, currentYear - 2].map((y) => (
+                  <option key={y} value={y}>
+                    {y}
+                  </option>
+                ))}
+              </select>
+              <button
+                className={`${btnSmall} bg-brand-600 text-white hover:bg-brand-700`}
+                disabled={dlBusy === `${myEmploymentId}bpa1`}
+                onClick={downloadBpa1Mine}
+              >
+                {dlBusy === `${myEmploymentId}bpa1`
+                  ? "Mengunduh…"
+                  : "🔒 Unduh BPA1 (PDF)"}
+              </button>
+              <span className="text-xs text-slate-400">
+                Untuk lampiran SPT Tahunan; memakai PIN slip yang sama.
+              </span>
+            </div>
             <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
               <span className="text-xs text-slate-500">
                 {pinStatus?.pin_set
@@ -445,6 +595,137 @@ export default function SlipPage() {
               </Card>
             </div>
           )}
+          <div className="mt-4">
+            <Card title={`BPA1 — bukti potong tahunan ${bpa1Year}`}>
+              <div className="mb-3 flex flex-wrap items-center gap-3">
+                <select
+                  className={`${inputCls} max-w-[130px]`}
+                  value={bpa1Year}
+                  onChange={(e) => setBpa1Year(Number(e.target.value))}
+                  aria-label="Tahun pajak"
+                >
+                  {[currentYear, currentYear - 1, currentYear - 2].map(
+                    (y) => (
+                      <option key={y} value={y}>
+                        Tahun {y}
+                      </option>
+                    )
+                  )}
+                </select>
+                <p className="text-xs text-slate-500">
+                  Agregat slip Januari–Desember per karyawan. Ekspor XML
+                  mengikuti struktur template resmi DJP (A1Bulk) untuk
+                  Coretax; NIK yang tidak 16 digit memblokir ekspor.
+                </p>
+              </div>
+              {bpa1Loading && <Spinner label="Menghitung agregat BPA1…" />}
+              {bpa1Error && <ErrorBox message={bpa1Error} />}
+              {!bpa1Loading && bpa1 && bpa1.rows.length === 0 && (
+                <EmptyState
+                  message={`Belum ada payroll terkunci pada tahun ${bpa1Year}.`}
+                />
+              )}
+              {!bpa1Loading && bpa1 && bpa1.rows.length > 0 && (
+                <>
+                  <div className="mb-3 flex flex-wrap gap-2">
+                    {bpa1.employers.map((e) => (
+                      <span
+                        key={e.legal_entity_id ?? "tanpa-badan"}
+                        className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700"
+                      >
+                        {e.employees} karyawan · NPWP{" "}
+                        {e.npwp ? e.npwp : "belum diatur"}
+                        <button
+                          className={btnSmall}
+                          disabled={
+                            !e.legal_entity_id ||
+                            xmlBusy === e.legal_entity_id
+                          }
+                          onClick={() => void exportXml(e)}
+                        >
+                          {xmlBusy === e.legal_entity_id
+                            ? "Menyiapkan…"
+                            : "Unduh XML"}
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-slate-200 text-sm">
+                      <thead className="bg-slate-50">
+                        <tr>
+                          <th className="px-4 py-3 text-left font-medium text-slate-600">
+                            Nama
+                          </th>
+                          <th className="px-4 py-3 text-left font-medium text-slate-600">
+                            NIK
+                          </th>
+                          <th className="px-4 py-3 text-left font-medium text-slate-600">
+                            Bulan
+                          </th>
+                          <th className="px-4 py-3 text-right font-medium text-slate-600">
+                            Bruto setahun
+                          </th>
+                          <th className="px-4 py-3 text-right font-medium text-slate-600">
+                            PPh dipotong
+                          </th>
+                          <th className="px-4 py-3 text-left font-medium text-slate-600">
+                            Aksi
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {bpa1.rows.map((r) => (
+                          <tr
+                            key={r.employment_id}
+                            className="hover:bg-slate-50"
+                          >
+                            <td className="px-4 py-3 font-medium text-slate-900">
+                              {r.person_name}
+                            </td>
+                            <td className="px-4 py-3 font-mono text-xs text-slate-600">
+                              {r.nik}
+                              {!r.nik_valid && (
+                                <span className="ml-2 rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-700">
+                                  NIK tidak valid
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-slate-600">
+                              {r.month_start}–{r.month_end} ({r.months_count}
+                              )
+                            </td>
+                            <td className="px-4 py-3 text-right text-slate-600">
+                              {rupiah(r.gross_total)}
+                            </td>
+                            <td className="px-4 py-3 text-right text-slate-600">
+                              {rupiah(r.pph21_withheld)}
+                            </td>
+                            <td className="px-4 py-3">
+                              <button
+                                className={`${btnSmall} bg-brand-600 text-white hover:bg-brand-700`}
+                                disabled={
+                                  dlBusy === `${r.employment_id}bpa1`
+                                }
+                                onClick={() => void downloadBpa1Row(r)}
+                              >
+                                {dlBusy === `${r.employment_id}bpa1`
+                                  ? "Mengunduh…"
+                                  : myEmploymentId &&
+                                      r.employment_id === myEmploymentId
+                                    ? "🔒 PDF"
+                                    : "PDF"}
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+            </Card>
+          </div>
         </>
       )}
 

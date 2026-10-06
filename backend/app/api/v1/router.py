@@ -19,6 +19,7 @@ from app.api.v1 import (
     documents,
     engagement,
     payslip_access,
+    bpa1,
     data_changes,
     notifications,
     team,
@@ -73,6 +74,7 @@ api_router.include_router(delegations.router)
 api_router.include_router(inbox.router)
 api_router.include_router(engagement.router)
 api_router.include_router(payslip_access.router)
+api_router.include_router(bpa1.router)
 api_router.include_router(data_changes.router)
 api_router.include_router(notifications.router)
 api_router.include_router(team.router)

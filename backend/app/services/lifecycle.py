@@ -69,6 +69,8 @@ ORG_EVENTS_SEED: list[tuple[str, str, str, list[str]]] = [
     ("org_relocation", "Relokasi", "Perpindahan lokasi", ["Lainnya"]),
     ("org_restructure", "Restrukturisasi", "Perubahan struktur organisasi", ["Lainnya"]),
     ("org_closed", "Penutupan", "Penutupan unit/lokasi", ["Lainnya"]),
+    ("org_data_update", "Pembaruan Data", "Koreksi/pembaruan data master entitas (mis. NPWP)",
+     ["Koreksi data", "Pembaruan data", "Lainnya"]),
 ]
 
 # Event -> Employment.status. "data_update" sengaja tidak ada: tak mengubah status.

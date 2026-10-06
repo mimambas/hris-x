@@ -19,6 +19,25 @@ import { angka, persen, tanggal, namaBulan, labelBulanSingkat, todayISO } from "
 import { Card, PageHeader, Spinner, ErrorBox } from "@/components/ui";
 
 
+interface MetricsResponse {
+  period: string;
+  workdays: number;
+  avg_headcount: number;
+  turnover_rate_pct: number;
+  terminated: number;
+  voluntary_turnover_pct: number | null;
+  absenteeism_rate_pct: number;
+  absent_days: number;
+  late_rate_pct: number;
+  overtime_hours: number;
+  overtime_ratio_pct: number;
+  labor_cost_per_employee: number;
+  payroll_run_available: boolean;
+  time_to_fill_days: number | null;
+  retention_90_pct: number | null;
+  definitions: Record<string, string>;
+}
+
 // Nama bulan Bahasa Indonesia — <input type="month"> bawaan browser mengikuti
 // locale browser (bisa tampil "October 2026"), jadi pakai select manual.
 const BULAN_ID = [
@@ -105,6 +124,7 @@ export default function DashboardPage() {
   const [period, setPeriod] = useState(() => todayISO().slice(0, 7));
   const [headcount, setHeadcount] = useState<HeadcountResponse | null>(null);
   const [turnover, setTurnover] = useState<TurnoverResponse | null>(null);
+  const [metrics, setMetrics] = useState<MetricsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // Karyawan biasa memang tidak punya izin "dashboard" view (PRD ANL-003:
@@ -123,6 +143,11 @@ export default function DashboardPage() {
       ]);
       setHeadcount(hc);
       setTurnover(to);
+      // Panel metrik baku (ANL-004) opsional: kegagalannya tidak
+      // menggagalkan dasbor utama.
+      apiFetch<MetricsResponse>(`/dashboard/metrics?period=${period}`)
+        .then(setMetrics)
+        .catch(() => setMetrics(null));
     } catch (err) {
       if (err instanceof ApiError && err.status === 403) {
         setForbidden(true);
@@ -293,6 +318,73 @@ export default function DashboardPage() {
                   <Bar dataKey="total" fill="#f59e0b" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
+            </div>
+          </Card>
+        </div>
+      )}
+      {metrics && (
+        <div className="mt-6">
+          <Card
+            title="Metrik baku (PRD ANL-004)"
+            subtitle={`Definisi baku satu-satunya untuk semua laporan — periode ${namaBulan(metrics.period)}, ${metrics.workdays} hari kerja, rata-rata ${angka(Math.round(metrics.avg_headcount))} karyawan`}
+          >
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <StatCard
+                label="Absenteeism rate"
+                value={persen(metrics.absenteeism_rate_pct)}
+                hint={metrics.definitions.absenteeism_rate}
+              />
+              <StatCard
+                label="Tingkat keterlambatan"
+                value={persen(metrics.late_rate_pct)}
+                hint={metrics.definitions.late_rate}
+              />
+              <StatCard
+                label="Overtime ratio"
+                value={persen(metrics.overtime_ratio_pct)}
+                hint={`${angka(metrics.overtime_hours)} jam lembur disetujui. ${metrics.definitions.overtime_ratio}`}
+              />
+              <StatCard
+                label="Biaya tenaga kerja / karyawan"
+                value={
+                  metrics.payroll_run_available
+                    ? `Rp ${angka(metrics.labor_cost_per_employee)}`
+                    : "—"
+                }
+                hint={
+                  metrics.payroll_run_available
+                    ? metrics.definitions.labor_cost_per_employee
+                    : "Belum ada payroll run pada periode ini."
+                }
+              />
+              <StatCard
+                label="Time to fill"
+                value={
+                  metrics.time_to_fill_days !== null
+                    ? `${angka(metrics.time_to_fill_days)} hari`
+                    : "—"
+                }
+                hint={metrics.definitions.time_to_fill}
+              />
+              <StatCard
+                label="Retensi karyawan baru 90 hari"
+                value={
+                  metrics.retention_90_pct !== null
+                    ? persen(metrics.retention_90_pct)
+                    : "—"
+                }
+                hint={metrics.definitions.retention_90}
+              />
+              <StatCard
+                label="Voluntary turnover"
+                value="Belum terklasifikasi"
+                hint={metrics.definitions.voluntary_turnover}
+              />
+              <StatCard
+                label="Hari tidak hadir tanpa cuti"
+                value={angka(metrics.absent_days)}
+                hint="Jumlah hari absen (status absent) pada record tercatat periode ini."
+              />
             </div>
           </Card>
         </div>

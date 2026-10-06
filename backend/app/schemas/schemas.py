@@ -2702,3 +2702,47 @@ class ReportDefinitionOut(BaseModel):
     spec: dict
     created_at: datetime
     updated_at: datetime
+
+
+# ---------------------------------------------------------------------------
+# BPA1 (PAY-011/PAY-006): agregat tahunan per karyawan.
+# ---------------------------------------------------------------------------
+
+
+class Bpa1RowOut(BaseModel):
+    employment_id: str
+    person_name: str
+    nik: str
+    nik_valid: bool
+    ptkp: str
+    position: str
+    legal_entity_id: str | None
+    employer_name: str
+    month_start: int
+    month_end: int
+    months_count: int
+    status: str
+    salary: int
+    gross_up: bool
+    tax_benefit: int
+    other_benefit: int
+    honorarium: int
+    insurance: int
+    natura: int
+    bonus_thr: int
+    pension: int
+    gross_total: int
+    pph21_withheld: int
+    take_home_total: int
+
+
+class Bpa1EmployerOut(BaseModel):
+    legal_entity_id: str | None
+    employees: int
+    npwp: str | None
+
+
+class Bpa1SummaryOut(BaseModel):
+    year: int
+    rows: list[Bpa1RowOut]
+    employers: list[Bpa1EmployerOut]

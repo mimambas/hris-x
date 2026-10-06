@@ -116,7 +116,7 @@ def test_katalog_event_tersedia(client, ctx):
     assert r.status_code == 200
     assert {e["code"] for e in r.json()} <= {
         "org_founded", "org_unit_created", "org_opened", "org_renamed",
-        "org_relocation", "org_restructure", "org_closed",
+        "org_relocation", "org_restructure", "org_closed", "org_data_update",
     }
     hire = next(e for e in client.get("/api/v1/lifecycle/events",
                                      headers=h).json() if e["code"] == "hire")

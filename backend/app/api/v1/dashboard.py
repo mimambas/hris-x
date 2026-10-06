@@ -98,3 +98,17 @@ def demographics(
 ):
     return svc.demographics(db, user.tenant_id, as_of or date.today(),
                             _visible(user, db))
+
+
+@router.get("/metrics")
+def metrics(
+    period: str = Query(description="Format YYYY-MM, mis. 2026-09"),
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """Metrik baku ANL-004 untuk dasbor per peran (ANL-003)."""
+    try:
+        svc.parse_period(period)
+    except (ValueError, AttributeError):
+        raise HTTPException(422, "Format period harus YYYY-MM")
+    return svc.standard_metrics(db, user.tenant_id, period, _visible(user, db))
