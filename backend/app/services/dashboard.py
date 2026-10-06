@@ -593,15 +593,75 @@ def build_payroll_summary_xlsx(db: Session, tenant_id, period: str,
 # ---------------------------------------------------------------------------
 # 4. Metrik baku (ANL-004) dan dasbor per peran (ANL-003)
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# 3c. Klasifikasi alasan keluar (voluntary vs involuntary, ANL-004)
+# ---------------------------------------------------------------------------
+# Alasan tersimpan apa adanya pada event terminasi JobInfo
+# (event_reason dari katalog lifecycle tenant). Pemetaan teks bebas
+# ke kelas: kata kunci sukarela menang lebih dulu, lalu tidak
+# sukarela; sisanya "lainnya" (kontrak berakhir dsb.). Tanpa baris
+# terminasi sama sekali -> "belum_terklasifikasi" (jujur, bukan
+# tebakan seperti sebelum putaran ini).
+_VOLUNTARY_HINTS = ("pengunduran diri", "mengundurkan diri",
+                    "resign", "sukarela")
+_INVOLUNTARY_HINTS = ("phk", "pemutusan hubungan kerja", "dipecat",
+                      "pemecatan", "diberhentikan", "tidak sukarela")
+
+
+def _termination_reason(db: Session, tenant_id, employment_id,
+                        upto: date) -> str | None:
+    row = db.execute(
+        select(JobInfo).where(
+            JobInfo.tenant_id == tenant_id,
+            JobInfo.employment_id == employment_id,
+            JobInfo.event == "termination",
+            JobInfo.valid_from <= upto,
+        ).order_by(JobInfo.valid_from.desc(), JobInfo.seq_no.desc())
+        .limit(1)
+    ).scalars().first()
+    return row.event_reason if row is not None else None
+
+
+def _classify_exit(reason: str | None) -> str:
+    if not reason:
+        return "belum_terklasifikasi"
+    text = reason.strip().lower()
+    if any(h in text for h in _VOLUNTARY_HINTS):
+        return "sukarela"
+    if any(h in text for h in _INVOLUNTARY_HINTS):
+        return "tidak_sukarela"
+    return "lainnya"
+
+
+def exit_classification(db: Session, tenant_id, period: str,
+                        person_ids: set | None = None) -> dict:
+    """Hitungan keluar per kelas untuk satu periode YYYY-MM."""
+    first, last = parse_period(period)
+    rows = _terminated_in(db, tenant_id, first, last, person_ids)
+    counts = {"sukarela": 0, "tidak_sukarela": 0, "lainnya": 0,
+              "belum_terklasifikasi": 0}
+    for emp in rows:
+        reason = _termination_reason(db, tenant_id, emp.id, last)
+        counts[_classify_exit(reason)] += 1
+    return {"terminated": len(rows), **counts}
+
+
 def standard_metrics(db: Session, tenant_id, period: str,
                      person_ids: set | None = None) -> dict:
     """Delapan metrik baku PRD 13.4 untuk satu periode YYYY-MM.
 
-    Definisi mengikuti tabel ANL-004 secara harfiah. Dua keterbatasan
-    data dinyatakan terbuka: voluntary turnover belum dapat dibedakan
-    karena alasan keluar belum terklasifikasi pada data kejadian, dan
-    biaya tenaga kerja memakai gaji kotor baris slip karena iuran
-    perusahaan tidak disimpan terpisah per baris.
+    Definisi mengikuti tabel ANL-004 secara harfiah. Satu keterbatasan
+    data dinyatakan terbuka: biaya tenaga kerja memakai gaji kotor
+    baris slip karena iuran perusahaan tidak disimpan terpisah per
+    baris.
+
+    Voluntary turnover diklasifikasikan dari alasan pada kejadian
+    terminasi JobInfo (lihat exit_classification): sukarela =
+    pengunduran diri; PHK = tidak sukarela; kontrak berakhir dan
+    alasan lain dipisah sebagai "lainnya"; keluar tanpa kejadian
+    terminasi tetap "belum terklasifikasi" (None bila seluruh yang
+    keluar pada periode tidak terklasifikasi; 0,0 bila tak ada yang
+    keluar sama sekali).
     """
     import calendar as _calendar
 
@@ -691,13 +751,26 @@ def standard_metrics(db: Session, tenant_id, period: str,
                     if cohort else None)
 
     turnover_data = turnover(db, tenant_id, period, person_ids)
+    exits = exit_classification(db, tenant_id, period, person_ids)
+    classified = exits["terminated"] - exits["belum_terklasifikasi"]
+    if exits["terminated"] == 0:
+        voluntary_pct: float | None = 0.0
+    elif classified == 0:
+        voluntary_pct = None
+    else:
+        voluntary_pct = (round(exits["sukarela"] / avg_hc * 100, 2)
+                         if avg_hc else None)
     return {
         "period": period,
         "workdays": workdays,
         "avg_headcount": avg_hc,
         "turnover_rate_pct": turnover_data["rate_pct"],
         "terminated": turnover_data["terminated"],
-        "voluntary_turnover_pct": None,
+        "voluntary_turnover_pct": voluntary_pct,
+        "voluntary_terminated": exits["sukarela"],
+        "involuntary_terminated": exits["tidak_sukarela"],
+        "other_terminated": exits["lainnya"],
+        "unclassified_terminated": exits["belum_terklasifikasi"],
         "absenteeism_rate_pct": absenteeism,
         "absent_days": absent_days,
         "late_rate_pct": att["late_pct"],
@@ -710,9 +783,13 @@ def standard_metrics(db: Session, tenant_id, period: str,
         "definitions": {
             "turnover_rate": "Karyawan keluar dalam periode / rata-rata "
                              "headcount periode x 100%.",
-            "voluntary_turnover": "Belum terklasifikasi: alasan keluar "
-                                  "belum dibedakan sukarela/tidak pada "
-                                  "data kejadian kepegawaian.",
+            "voluntary_turnover": "Keluar sukarela (alasan Pengunduran "
+                                  "diri pada kejadian terminasi) / "
+                                  "rata-rata headcount x 100 persen. PHK "
+                                  "dihitung tidak sukarela; kontrak "
+                                  "berakhir dan alasan lain dipisah; "
+                                  "keluar tanpa kejadian terminasi "
+                                  "dinyatakan belum terklasifikasi.",
             "absenteeism_rate": "Hari tidak hadir tanpa cuti / hari "
                                 "kerja terjadwal (hari kerja x rata-rata "
                                 "headcount) x 100%.",

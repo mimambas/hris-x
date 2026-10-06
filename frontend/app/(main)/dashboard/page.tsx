@@ -26,6 +26,10 @@ interface MetricsResponse {
   turnover_rate_pct: number;
   terminated: number;
   voluntary_turnover_pct: number | null;
+  voluntary_terminated: number;
+  involuntary_terminated: number;
+  other_terminated: number;
+  unclassified_terminated: number;
   absenteeism_rate_pct: number;
   absent_days: number;
   late_rate_pct: number;
@@ -377,8 +381,16 @@ export default function DashboardPage() {
               />
               <StatCard
                 label="Voluntary turnover"
-                value="Belum terklasifikasi"
-                hint={metrics.definitions.voluntary_turnover}
+                value={
+                  metrics.voluntary_turnover_pct !== null
+                    ? persen(metrics.voluntary_turnover_pct)
+                    : "Belum terklasifikasi"
+                }
+                hint={
+                  metrics.terminated > 0
+                    ? `${metrics.definitions.voluntary_turnover} Bulan ini: sukarela ${angka(metrics.voluntary_terminated)}, PHK ${angka(metrics.involuntary_terminated)}, lainnya ${angka(metrics.other_terminated)}${metrics.unclassified_terminated > 0 ? `, belum terklasifikasi ${angka(metrics.unclassified_terminated)}` : ""}.`
+                    : `${metrics.definitions.voluntary_turnover} Tidak ada karyawan keluar pada periode ini.`
+                }
               />
               <StatCard
                 label="Hari tidak hadir tanpa cuti"

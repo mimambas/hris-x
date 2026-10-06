@@ -118,6 +118,31 @@ def assign_shift(
     return assignment
 
 
+def close_assignment(
+    *, db: Session, tenant_id, assignment_id, new_valid_to: date,
+) -> ShiftAssignment:
+    """Persingkat/akhiri penugasan: geser valid_to ke tanggal akhir baru.
+
+    Dipakai saat karyawan berganti pola shift: penugasan lama yang
+    terbuka (MAX_DATE) harus diakhiri sehari sebelum penugasan baru
+    dimulai — sebelum endpoint ini ada, itu hanya bisa lewat SQL.
+    """
+    assignment = db.get(ShiftAssignment, assignment_id)
+    if assignment is None or assignment.tenant_id != tenant_id:
+        raise KeyError("Penugasan shift tidak ditemukan")
+    if new_valid_to < assignment.valid_from:
+        raise ValueError(
+            "Tanggal akhir baru tidak boleh sebelum tanggal mulai "
+            "penugasan")
+    if new_valid_to >= assignment.valid_to:
+        raise ValueError(
+            "Tanggal akhir baru harus lebih awal dari tanggal akhir "
+            "penugasan saat ini")
+    assignment.valid_to = new_valid_to
+    db.flush()
+    return assignment
+
+
 def get_shift_for(
     db: Session, tenant_id, employment_id, day: date
 ) -> tuple[Shift, datetime, datetime] | tuple[None, None, None]:

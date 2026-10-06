@@ -951,6 +951,11 @@ class ShiftAssignOut(BaseModel):
     valid_to: date
 
 
+class ShiftAssignCloseRequest(BaseModel):
+    valid_to: date
+    reason: str = Field(min_length=1, max_length=500)
+
+
 class CheckInOutRequest(BaseModel):
     employment_id: uuid.UUID
     at: datetime | None = None  # default: sekarang
@@ -2778,3 +2783,14 @@ class BiKeyOut(BaseModel):
 class BiKeyCreatedOut(BiKeyOut):
     token: str
     token_hint: str
+
+
+# ---------------------------------------------------------------------------
+# Suksesi: kandidat employment dengan nama ter-resolve (dropdown non-HR)
+# ---------------------------------------------------------------------------
+
+
+class TalentCandidateOut(BaseModel):
+    employment_id: uuid.UUID
+    person_id: uuid.UUID
+    person_name: str

@@ -457,3 +457,26 @@ def test_opportunity_visibility_and_close(client, ctx):
     r = client.post(f"/api/v1/talent/opportunities/{opp['id']}/apply",
                     headers=h_staff, json={})
     assert r.status_code == 422, r.text
+
+
+def test_candidates_resolve_nama_untuk_non_hr(client, ctx):
+    """Dropdown suksesi: nama ter-resolve server untuk non-HR."""
+    _grant(ctx, "Inserter", can_view=True)
+    h_staff = login_headers(client, "hashiru", "u_staff@x.id")
+    r = client.get("/api/v1/talent/candidates", headers=h_staff)
+    assert r.status_code == 200, r.text
+    names = {c["person_name"] for c in r.json()}
+    assert "Staff" in names and "Full" in names, names
+    mine = next(c for c in r.json() if c["person_name"] == "Staff")
+    assert mine["employment_id"] == str(ctx["e_staff"].id)
+
+    r = client.get("/api/v1/talent/candidates", headers=fh(client))
+    assert r.status_code == 200, r.text
+    assert {c["person_name"] for c in r.json()} >= {"Full", "Mgr",
+                                                    "Staff"}
+
+    # Tanpa izin talent: default deny.
+    r = client.get("/api/v1/talent/candidates",
+                   headers=login_headers(client, "hashiru",
+                                         "u_none@x.id"))
+    assert r.status_code == 403, r.text

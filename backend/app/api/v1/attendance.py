@@ -30,6 +30,7 @@ from app.schemas.schemas import (
     CheckInOutRequest,
     HolidayCreate,
     HolidayOut,
+    ShiftAssignCloseRequest,
     ShiftAssignOut,
     ShiftAssignRequest,
     ShiftCreate,
@@ -125,6 +126,55 @@ def assign_shift(
                             "shift_id": str(body.shift_id),
                             "valid_from": body.valid_from.isoformat(),
                             "valid_to": assignment.valid_to.isoformat()},
+                reason=body.reason, channel="api", ip=client_ip(request))
+    db.commit()
+    return ShiftAssignOut.model_validate(assignment)
+
+
+@router.get("/shift-assignments", response_model=list[ShiftAssignOut],
+            dependencies=[Depends(require_permission("shift", "view"))])
+def list_shift_assignments(
+    employment_id: uuid.UUID = Query(...),
+    user: User = Depends(get_current_user), db: Session = Depends(get_db),
+):
+    resolve_employment(db, user, employment_id, "shift", "view")
+    rows = db.execute(
+        select(ShiftAssignment).where(
+            ShiftAssignment.tenant_id == user.tenant_id,
+            ShiftAssignment.employment_id == employment_id)
+        .order_by(ShiftAssignment.valid_from)
+    ).scalars().all()
+    return [ShiftAssignOut.model_validate(r) for r in rows]
+
+
+@router.patch("/shift-assignments/{assignment_id}",
+              response_model=ShiftAssignOut,
+              dependencies=[Depends(require_permission("shift",
+                                                       "correct"))])
+def close_shift_assignment(
+    assignment_id: uuid.UUID, body: ShiftAssignCloseRequest,
+    request: Request,
+    user: User = Depends(get_current_user), db: Session = Depends(get_db),
+):
+    existing = db.get(ShiftAssignment, assignment_id)
+    if existing is None or existing.tenant_id != user.tenant_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND,
+                            "Penugasan shift tidak ditemukan")
+    old_to = existing.valid_to
+    try:
+        assignment = att.close_assignment(
+            db=db, tenant_id=user.tenant_id,
+            assignment_id=assignment_id, new_valid_to=body.valid_to)
+    except KeyError as e:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(e))
+    except ValueError as e:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            str(e))
+    write_audit(db=db, tenant_id=user.tenant_id, actor_user_id=user.id,
+                action="update", object_type="shift_assignment",
+                object_id=assignment.id,
+                old_values={"valid_to": old_to.isoformat()},
+                new_values={"valid_to": assignment.valid_to.isoformat()},
                 reason=body.reason, channel="api", ip=client_ip(request))
     db.commit()
     return ShiftAssignOut.model_validate(assignment)

@@ -82,6 +82,7 @@ from app.schemas.schemas import (
     PersonSkillOut,
     SuccessionNominationCreate,
     SuccessionNominationOut,
+    TalentCandidateOut,
     TalentCertificationOut,
     TalentPoolCreate,
     TalentPoolMemberOut,
@@ -191,6 +192,31 @@ def _org_unit_name(db: Session, user: User, org_unit_id) -> str | None:
                     identity_field="org_unit_id", identity_value=org_unit_id,
                     as_of_date=date.today())
     return info.name if info is not None else None
+
+
+# ---------------------------------------------------------------- Kandidat
+@router.get("/talent/candidates", response_model=list[TalentCandidateOut],
+            dependencies=[Depends(require_permission(_OBJECT, "view"))])
+def list_candidates(user: User = Depends(get_current_user),
+                    db: Session = Depends(get_db)):
+    """Employment aktif dengan nama ter-resolve di server.
+
+    Halaman Suksesi sebelumnya mengambil nama dari /persons, yang
+    untuk non-HR dibatasi RBAC sehingga dropdown profil kosong.
+    Pola yang sama dengan /kudos/candidates: hanya nama, dibatasi
+    populasi yang boleh dilihat pemanggil.
+    """
+    visible = population_service.get_visible_person_ids(db, user)
+    stmt = select(Employment).where(
+        Employment.tenant_id == user.tenant_id,
+        Employment.status == "active")
+    if visible is not None:
+        stmt = stmt.where(Employment.person_id.in_(visible))
+    out = [TalentCandidateOut(employment_id=e.id, person_id=e.person_id,
+                              person_name=_person_name(db, e))
+           for e in db.execute(stmt).scalars().all()]
+    out.sort(key=lambda c: c.person_name)
+    return out
 
 
 # ------------------------------------------------------------------- Skill

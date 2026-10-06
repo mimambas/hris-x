@@ -184,6 +184,41 @@ def test_shift_overlap_rejected(client, ctx):
     assert r.status_code == 422  # periode tumpang tindih
 
 
+def test_shift_assignment_dapat_diakhiri_lalu_diganti(client, ctx):
+    """Skenario EXP-012: akhiri penugasan terbuka, tugaskan pola baru.
+
+    Sebelum endpoint PATCH ini ada, alur ini hanya bisa lewat SQL.
+    """
+    h = ah(client)
+    _, e = _mk_employee(client, h, ctx, "Ganti Pola")
+    shifts = _seed_shifts(ctx)
+    r = client.post("/api/v1/shift-assignments", headers=h, json={
+        "employment_id": e["id"], "shift_id": shifts["pagi"],
+        "valid_from": "2024-01-01", "reason": "uji"})
+    assert r.status_code == 201, r.text
+    asg = r.json()
+    url = f"/api/v1/shift-assignments/{asg['id']}"
+    r = client.patch(url, headers=h, json={
+        "valid_to": "2023-01-01", "reason": "uji"})
+    assert r.status_code == 422  # sebelum tanggal mulai
+    r = client.patch(url, headers=h, json={
+        "valid_to": "2026-10-05", "reason": "Ganti pola shift"})
+    assert r.status_code == 200, r.text
+    assert r.json()["valid_to"] == "2026-10-05"
+    r = client.get("/api/v1/shift-assignments", headers=h,
+                   params={"employment_id": e["id"]})
+    assert r.status_code == 200, r.text
+    assert len(r.json()) == 1
+    assert r.json()[0]["valid_to"] == "2026-10-05"
+    r = client.post("/api/v1/shift-assignments", headers=h, json={
+        "employment_id": e["id"], "shift_id": shifts["siang"],
+        "valid_from": "2026-10-06", "reason": "uji"})
+    assert r.status_code == 201, r.text
+    r = client.patch(url, headers=h, json={
+        "valid_to": "2026-10-05", "reason": "uji"})
+    assert r.status_code == 422  # harus lebih awal dari akhir saat ini
+
+
 def test_correct_requires_reason_and_versions(client, ctx):
     h = ah(client)
     _, e = _mk_employee(client, h, ctx, "Koreksi Uji")

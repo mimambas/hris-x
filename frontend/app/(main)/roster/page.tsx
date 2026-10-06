@@ -60,6 +60,25 @@ interface Candidate {
   shift_name: string | null;
 }
 
+interface ShiftItem {
+  id: string;
+  code: string;
+  name: string;
+}
+
+interface Assignment {
+  id: string;
+  employment_id: string;
+  shift_id: string;
+  valid_from: string;
+  valid_to: string;
+}
+
+interface EmpOption {
+  id: string;
+  name: string;
+}
+
 const STATUS_META: Record<string, { label: string; cls: string }> = {
   menunggu_partner: { label: "Menunggu persetujuan partner", cls: "bg-violet-100 text-violet-800" },
   menunggu_atasan: { label: "Menunggu persetujuan atasan", cls: "bg-amber-100 text-amber-800" },
@@ -113,6 +132,136 @@ export default function RosterPage() {
     approve: boolean;
   } | null>(null);
   const [decisionReason, setDecisionReason] = useState("");
+
+  // Kelola penugasan shift (HR/berizin shift) — kartu disembunyikan
+  // bila /shifts tidak dapat diakses pemanggil.
+  const [manageable, setManageable] = useState(false);
+  const [shiftsM, setShiftsM] = useState<ShiftItem[]>([]);
+  const [empOptions, setEmpOptions] = useState<EmpOption[]>([]);
+  const [mgrEmp, setMgrEmp] = useState("");
+  const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [asgLoading, setAsgLoading] = useState(false);
+  const [assignForm, setAssignForm] = useState({
+    shift_id: "",
+    valid_from: iso(new Date()),
+    valid_to: "",
+    reason: "",
+  });
+  const [closing, setClosing] = useState<Assignment | null>(null);
+  const [closeDate, setCloseDate] = useState(iso(new Date()));
+  const [closeReason, setCloseReason] = useState("Ganti pola shift");
+  const [mgrBusy, setMgrBusy] = useState(false);
+
+  const loadAssignments = useCallback(async (empId: string) => {
+    if (!empId) return;
+    setAsgLoading(true);
+    try {
+      setAssignments(
+        await apiFetch<Assignment[]>(
+          `/shift-assignments?employment_id=${empId}`
+        )
+      );
+    } catch {
+      setAssignments([]);
+    } finally {
+      setAsgLoading(false);
+    }
+  }, []);
+
+  const loadManage = useCallback(async () => {
+    const shifts = await apiFetch<ShiftItem[]>("/shifts").catch(
+      () => null
+    );
+    if (!shifts) {
+      setManageable(false);
+      return;
+    }
+    setManageable(true);
+    setShiftsM(shifts);
+    setAssignForm((f) => ({ ...f, shift_id: f.shift_id || shifts[0]?.id || "" }));
+    const [emps, cands, persons] = await Promise.all([
+      apiFetch<{ id: string; person_id: string; status: string }[]>(
+        "/employments"
+      ).catch(() => []),
+      apiFetch<
+        { employment_id: string; person_id: string; person_name: string }[]
+      >("/talent/candidates").catch(() => []),
+      apiFetch<{ id: string; full_name: string }[]>("/persons").catch(
+        () => []
+      ),
+    ]);
+    const names = new Map(persons.map((p) => [p.id, p.full_name]));
+    for (const c of cands) names.set(c.person_id, c.person_name);
+    const opts = emps
+      .filter((e) => e.status === "active")
+      .map((e) => ({ id: e.id, name: names.get(e.person_id) ?? e.id }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    setEmpOptions(opts);
+    setMgrEmp((prev) => prev || opts[0]?.id || "");
+  }, []);
+
+  useEffect(() => {
+    void loadManage();
+  }, [loadManage]);
+
+  useEffect(() => {
+    if (manageable && mgrEmp) void loadAssignments(mgrEmp);
+  }, [manageable, mgrEmp, loadAssignments]);
+
+  async function submitAssign() {
+    setMgrBusy(true);
+    setActionError(null);
+    try {
+      await apiFetch("/shift-assignments", {
+        method: "POST",
+        body: JSON.stringify({
+          employment_id: mgrEmp,
+          shift_id: assignForm.shift_id,
+          valid_from: assignForm.valid_from,
+          valid_to: assignForm.valid_to || undefined,
+          reason: assignForm.reason.trim() || "Penugasan dari halaman roster",
+        }),
+      });
+      setNotice("Penugasan shift tersimpan.");
+      setAssignForm((f) => ({ ...f, valid_to: "", reason: "" }));
+      await loadAssignments(mgrEmp);
+      void load();
+    } catch (err) {
+      setActionError(
+        err instanceof ApiError ? err.message : "Gagal menyimpan penugasan."
+      );
+    } finally {
+      setMgrBusy(false);
+    }
+  }
+
+  async function submitClose() {
+    if (!closing) return;
+    setMgrBusy(true);
+    setActionError(null);
+    try {
+      await apiFetch(`/shift-assignments/${closing.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          valid_to: closeDate,
+          reason: closeReason.trim() || "Ganti pola shift",
+        }),
+      });
+      setNotice("Penugasan shift diakhiri.");
+      setClosing(null);
+      await loadAssignments(mgrEmp);
+      void load();
+    } catch (err) {
+      setActionError(
+        err instanceof ApiError ? err.message : "Gagal mengakhiri penugasan."
+      );
+    } finally {
+      setMgrBusy(false);
+    }
+  }
+
+  const shiftName = (id: string) =>
+    shiftsM.find((s) => s.id === id)?.name ?? "?";
 
   const weekEnd = useMemo(() => {
     const e = new Date(weekStart);
@@ -346,6 +495,140 @@ export default function RosterPage() {
     );
   }
 
+  const manageCard = manageable ? (
+      <Card
+        title="Penugasan shift"
+        subtitle="Tugaskan pola shift baru, atau akhiri penugasan yang masih terbuka sebelum mengganti polanya."
+      >
+        <div className="space-y-4">
+          <Field label="Karyawan">
+            <select
+              className={inputCls}
+              value={mgrEmp}
+              onChange={(e) => setMgrEmp(e.target.value)}
+            >
+              {empOptions.length === 0 && (
+                <option value="">Tidak ada karyawan aktif</option>
+              )}
+              {empOptions.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          {asgLoading ? (
+            <Spinner label="Memuat penugasan…" />
+          ) : assignments.length === 0 ? (
+            <EmptyState message="Karyawan ini belum punya penugasan shift." />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs text-slate-400">
+                    <th className="py-1 pr-3 font-medium">Shift</th>
+                    <th className="py-1 pr-3 font-medium">Berlaku</th>
+                    <th className="py-1 pr-3 font-medium">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {assignments.map((a) => (
+                    <tr key={a.id} className="border-t border-slate-100">
+                      <td className="py-1.5 pr-3 font-medium text-slate-800">
+                        {shiftName(a.shift_id)}
+                      </td>
+                      <td className="py-1.5 pr-3 text-slate-600">
+                        {tanggal(a.valid_from)} s.d.{" "}
+                        {a.valid_to.startsWith("9999")
+                          ? "masih berlaku"
+                          : tanggal(a.valid_to)}
+                      </td>
+                      <td className="py-1.5 pr-3">
+                        <button
+                          className={btnSmall}
+                          onClick={() => {
+                            setClosing(a);
+                            setCloseDate(iso(new Date()));
+                            setCloseReason("Ganti pola shift");
+                          }}
+                        >
+                          Akhiri…
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <div className="border-t border-slate-100 pt-3">
+            <p className="mb-2 text-sm font-medium text-slate-800">
+              Tugaskan shift baru
+            </p>
+            <div className="grid gap-4 sm:grid-cols-4">
+              <Field label="Shift">
+                <select
+                  className={inputCls}
+                  value={assignForm.shift_id}
+                  onChange={(e) =>
+                    setAssignForm((f) => ({ ...f, shift_id: e.target.value }))
+                  }
+                >
+                  {shiftsM.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} ({s.code})
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Mulai">
+                <input
+                  className={inputCls}
+                  type="date"
+                  value={assignForm.valid_from}
+                  onChange={(e) =>
+                    setAssignForm((f) => ({ ...f, valid_from: e.target.value }))
+                  }
+                />
+              </Field>
+              <Field label="Sampai (opsional)">
+                <input
+                  className={inputCls}
+                  type="date"
+                  value={assignForm.valid_to}
+                  onChange={(e) =>
+                    setAssignForm((f) => ({ ...f, valid_to: e.target.value }))
+                  }
+                />
+              </Field>
+              <Field label="Alasan">
+                <input
+                  className={inputCls}
+                  maxLength={500}
+                  value={assignForm.reason}
+                  onChange={(e) =>
+                    setAssignForm((f) => ({ ...f, reason: e.target.value }))
+                  }
+                  placeholder="cth. Rotasi pola shift"
+                />
+              </Field>
+            </div>
+            <div className="mt-3">
+              <button
+                className={btnPrimary}
+                disabled={mgrBusy || !mgrEmp || !assignForm.shift_id}
+                onClick={() => void submitAssign()}
+              >
+                {mgrBusy ? "Menyimpan…" : "Simpan penugasan"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </Card>
+  ) : null;
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -363,7 +646,10 @@ export default function RosterPage() {
       {loading ? (
         <Spinner />
       ) : error ? (
-        <ErrorBox message={error} />
+        <>
+          <ErrorBox message={error} />
+          {manageCard}
+        </>
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-2">
@@ -511,6 +797,8 @@ export default function RosterPage() {
               </ul>
             </Card>
           )}
+
+          {manageCard}
         </>
       )}
 
@@ -567,6 +855,53 @@ export default function RosterPage() {
                 />
               </Field>
             )}
+          </div>
+        </Modal>
+      )}
+
+      {closing && (
+        <Modal
+          title="Akhiri penugasan shift?"
+          onClose={() => setClosing(null)}
+          actions={
+            <>
+              <button className={btnSecondary} onClick={() => setClosing(null)}>
+                Kembali
+              </button>
+              <button
+                className={btnPrimary}
+                disabled={mgrBusy}
+                onClick={() => void submitClose()}
+              >
+                {mgrBusy ? "Menyimpan…" : "Ya, akhiri"}
+              </button>
+            </>
+          }
+        >
+          <div className="space-y-3">
+            <p className="text-sm text-slate-600">
+              Penugasan shift {shiftName(closing.shift_id)} yang mulai{" "}
+              {tanggal(closing.valid_from)} akan diakhiri pada tanggal
+              berikut. Setelah itu pola baru dapat ditugaskan mulai hari
+              berikutnya tanpa tumpang tindih.
+            </p>
+            <Field label="Berlaku terakhir (tanggal akhir)">
+              <input
+                className={inputCls}
+                type="date"
+                value={closeDate}
+                min={closing.valid_from}
+                onChange={(e) => setCloseDate(e.target.value)}
+              />
+            </Field>
+            <Field label="Alasan">
+              <input
+                className={inputCls}
+                maxLength={500}
+                value={closeReason}
+                onChange={(e) => setCloseReason(e.target.value)}
+              />
+            </Field>
           </div>
         </Modal>
       )}

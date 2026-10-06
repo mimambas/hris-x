@@ -249,15 +249,20 @@ export default function SuksesiPage() {
     try {
       const meInfo = await fetchRetry(() => apiFetch<MeInfo>("/me"));
       setMe(meInfo);
-      const [emps, persons, jb, ps, cs, cy] = await Promise.all([
+      const [emps, persons, candidates, jb, ps, cs, cy] = await Promise.all([
         apiFetch<Employment[]>("/employments").catch(() => []),
         apiFetch<Person[]>("/persons").catch(() => []),
+        apiFetch<{ employment_id: string; person_id: string; person_name: string }[]>(
+          "/talent/candidates"
+        ).catch(() => []),
         apiFetch<OrgJob[]>("/org/jobs").catch(() => []),
         apiFetch<OrgPosition[]>("/org/positions").catch(() => []),
         apiFetch<Course[]>("/performance/courses").catch(() => []),
         apiFetch<Cycle[]>("/performance/cycles").catch(() => []),
       ]);
       const pm = new Map(persons.map((p) => [p.id, p.full_name]));
+      // Nama dari kandidat ter-resolve server (non-HR: /persons terbatas).
+      for (const c of candidates) pm.set(c.person_id, c.person_name);
       setPersonMap(pm);
       const active = emps.filter(
         (e) => e.status === "active" && pm.has(e.person_id)
