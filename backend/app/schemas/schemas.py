@@ -2907,3 +2907,33 @@ class PayFinalCandidateOut(BaseModel):
     termination_date: date | None
     reason: str | None
     has_final_pay: bool
+
+
+# ---------------------------------------------------------------------- PAY-015
+class PayJournalEntryOut(BaseModel):
+    cost_center_code: str
+    cost_center_name: str
+    account_code: str
+    account_name: str
+    debit: int
+    credit: int
+
+
+class PayJournalCostCenterOut(BaseModel):
+    cost_center_code: str
+    cost_center_name: str
+    total_debit: int
+    total_credit: int
+    balanced: bool
+
+
+class PayJournalOut(BaseModel):
+    run_id: uuid.UUID
+    period: str
+    status: str
+    journal_date: date
+    entries: list[PayJournalEntryOut]
+    per_cost_center: list[PayJournalCostCenterOut]
+    total_debit: int
+    total_credit: int
+    balanced: bool

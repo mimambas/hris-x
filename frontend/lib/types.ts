@@ -177,6 +177,35 @@ export interface PayrollRun {
   locked_at: string | null;
 }
 
+export interface PayJournalEntry {
+  cost_center_code: string;
+  cost_center_name: string;
+  account_code: string;
+  account_name: string;
+  debit: number;
+  credit: number;
+}
+
+export interface PayJournalCostCenter {
+  cost_center_code: string;
+  cost_center_name: string;
+  total_debit: number;
+  total_credit: number;
+  balanced: boolean;
+}
+
+export interface PayJournal {
+  run_id: string;
+  period: string;
+  status: string;
+  journal_date: string;
+  entries: PayJournalEntry[];
+  per_cost_center: PayJournalCostCenter[];
+  total_debit: number;
+  total_credit: number;
+  balanced: boolean;
+}
+
 export interface PayrollLine {
   id: string;
   employment_id: string;

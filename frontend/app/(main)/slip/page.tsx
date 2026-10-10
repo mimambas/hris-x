@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch, ApiError, apiDownload } from "@/lib/api";
-import type { PayrollRun, PayrollLine } from "@/lib/types";
+import type { PayrollRun, PayrollLine, PayJournal } from "@/lib/types";
 import { rupiah, namaBulan } from "@/lib/format";
 import {
   PageHeader,
@@ -91,6 +91,12 @@ export default function SlipPage() {
   const [linesError, setLinesError] = useState<string | null>(null);
   const [dlBusy, setDlBusy] = useState<string | null>(null);
 
+  // Jurnal payroll per cost center (PAY-015).
+  const [journal, setJournal] = useState<PayJournal | null>(null);
+  const [journalLoading, setJournalLoading] = useState(false);
+  const [journalError, setJournalError] = useState<string | null>(null);
+  const [journalBusy, setJournalBusy] = useState(false);
+
   const [pinStatus, setPinStatus] = useState<PinStatus | null>(null);
   const [mySlips, setMySlips] = useState<MySlip[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
@@ -171,6 +177,45 @@ export default function SlipPage() {
     }
     void loadLines();
   }, [runId]);
+
+  useEffect(() => {
+    if (!runId || !canViewAll) return;
+    async function loadJournal() {
+      setJournalLoading(true);
+      setJournalError(null);
+      try {
+        const data = await apiFetch<PayJournal>(
+          `/payroll/runs/${runId}/journal`
+        );
+        setJournal(data);
+      } catch (err) {
+        setJournal(null);
+        setJournalError(
+          err instanceof ApiError ? err.message : "Gagal memuat jurnal."
+        );
+      } finally {
+        setJournalLoading(false);
+      }
+    }
+    void loadJournal();
+  }, [runId, canViewAll]);
+
+  async function downloadJournalCsv() {
+    if (!run) return;
+    setJournalBusy(true);
+    try {
+      await apiDownload(
+        `/payroll/runs/${run.id}/journal.csv`,
+        `jurnal-${run.period}.csv`
+      );
+    } catch (err) {
+      setJournalError(
+        err instanceof ApiError ? err.message : "Gagal mengunduh CSV jurnal."
+      );
+    } finally {
+      setJournalBusy(false);
+    }
+  }
 
   const run = runs.find((r) => r.id === runId);
   const myEmploymentId = pinStatus?.employment_id ?? null;
@@ -592,6 +637,98 @@ export default function SlipPage() {
                       </table>
                     </div>
                   ))}
+              </Card>
+            </div>
+          )}
+          {runId && canViewAll && (
+            <div className="mt-4">
+              <Card title={`Jurnal cost center — ${namaBulan(run?.period ?? "")}`}>
+                {journalLoading && <Spinner label="Memuat jurnal…" />}
+                {journalError && <ErrorBox message={journalError} />}
+                {!journalLoading && !journalError && journal && (
+                  <>
+                    <div className="mb-3 flex flex-wrap items-center gap-3">
+                      <p className="text-sm text-slate-600">
+                        Total debit{" "}
+                        <span className="font-semibold text-slate-900">
+                          {rupiah(journal.total_debit)}
+                        </span>{" "}
+                        · total kredit{" "}
+                        <span className="font-semibold text-slate-900">
+                          {rupiah(journal.total_credit)}
+                        </span>
+                      </p>
+                      <span
+                        className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                          journal.balanced
+                            ? "bg-emerald-50 text-emerald-700"
+                            : "bg-red-50 text-red-700"
+                        }`}
+                      >
+                        {journal.balanced ? "Seimbang" : "Tidak seimbang"}
+                      </span>
+                      <button
+                        className={`${btnSmall} bg-brand-600 text-white hover:bg-brand-700`}
+                        disabled={journalBusy}
+                        onClick={() => void downloadJournalCsv()}
+                      >
+                        {journalBusy ? "Mengunduh…" : "Unduh CSV jurnal"}
+                      </button>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full divide-y divide-slate-200 text-sm">
+                        <thead className="bg-slate-50">
+                          <tr>
+                            <th className="px-4 py-3 text-left font-medium text-slate-600">
+                              Cost center
+                            </th>
+                            <th className="px-4 py-3 text-left font-medium text-slate-600">
+                              Akun
+                            </th>
+                            <th className="px-4 py-3 text-right font-medium text-slate-600">
+                              Debit
+                            </th>
+                            <th className="px-4 py-3 text-right font-medium text-slate-600">
+                              Kredit
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {journal.entries.map((e) => (
+                            <tr
+                              key={`${e.cost_center_code}-${e.account_code}`}
+                              className="hover:bg-slate-50"
+                            >
+                              <td className="px-4 py-3 text-slate-600">
+                                <span className="font-mono text-xs">
+                                  {e.cost_center_code}
+                                </span>{" "}
+                                {e.cost_center_name}
+                              </td>
+                              <td className="px-4 py-3 text-slate-600">
+                                <span className="font-mono text-xs">
+                                  {e.account_code}
+                                </span>{" "}
+                                {e.account_name}
+                              </td>
+                              <td className="px-4 py-3 text-right text-slate-600">
+                                {e.debit ? rupiah(e.debit) : "—"}
+                              </td>
+                              <td className="px-4 py-3 text-right text-slate-600">
+                                {e.credit ? rupiah(e.credit) : "—"}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <p className="mt-3 text-xs text-slate-500">
+                      Jurnal dihitung langsung dari snapshot slip periode ini;
+                      karyawan tanpa pemetaan cost center masuk ember “Tanpa
+                      cost center”. Status run: {journal.status}.
+                    </p>
+                  </>
+                )}
               </Card>
             </div>
           )}

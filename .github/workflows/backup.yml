@@ -12,8 +12,12 @@
 name: Backup database harian
 
 on:
-  schedule:
-    - cron: "0 18 * * *" # 01:00 WIB setiap hari
+  # Jadwal harian DIMATIKAN atas keputusan user 2026-10-10: selama
+  # secret DATABASE_URL_BACKUP kosong, run terjadwal hanya menghasilkan
+  # kegagalan beruntun. Aktifkan lagi baris schedule di bawah ini
+  # setelah secret terisi.
+  # schedule:
+  #   - cron: "0 18 * * *" # 01:00 WIB setiap hari
   workflow_dispatch: # tombol "Run workflow" manual
 
 jobs:

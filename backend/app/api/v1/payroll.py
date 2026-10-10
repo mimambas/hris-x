@@ -29,6 +29,7 @@ from app.models import (
 from app.schemas.schemas import (
     CompAssignmentCreate,
     CompAssignmentOut,
+    PayJournalOut,
     PayrollLineOut,
     PayrollPolicyOut,
     PayrollPolicyUpdate,
@@ -38,6 +39,7 @@ from app.schemas.schemas import (
     SalaryComponentOut,
     SalaryComponentVersionCreate,
 )
+from app.services import payroll_journal
 from app.services import effective_dating as ed
 from app.services import payroll as payroll_service
 from app.services import payslip as payslip_service
@@ -559,4 +561,38 @@ def transfer_file(
         csv_text, media_type="text/csv",
         headers={"Content-Disposition":
                  f"attachment; filename=transfer-{bank.lower()}-{run.period}.csv"},
+    )
+
+
+@router.get(
+    "/payroll/runs/{run_id}/journal",
+    response_model=PayJournalOut,
+    dependencies=[Depends(require_permission("payroll", "view"))],
+)
+def run_journal(
+    run_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Jurnal akuntansi per cost center dari snapshot run (PAY-015);
+    total debit = total kredit per cost center dan per run."""
+    run = _run_or_404(db, user.tenant_id, run_id)
+    return payroll_journal.build_journal(db, user.tenant_id, run)
+
+
+@router.get(
+    "/payroll/runs/{run_id}/journal.csv",
+    dependencies=[Depends(require_permission("payroll", "view"))],
+)
+def run_journal_csv(
+    run_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    run = _run_or_404(db, user.tenant_id, run_id)
+    journal = payroll_journal.build_journal(db, user.tenant_id, run)
+    return PlainTextResponse(
+        payroll_journal.render_csv(journal), media_type="text/csv",
+        headers={"Content-Disposition":
+                 f"attachment; filename=jurnal-{run.period}.csv"},
     )

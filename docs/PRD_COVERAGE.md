@@ -28,7 +28,7 @@ dengan penyederhanaan tercatat. **Belum** = belum dibangun.
 | PAY-012 | File transfer bank (BCA/Mandiri/BRI/BNI) | Live\* | CSV generik; format spesifik per bank belum. |
 | PAY-013 | Retro pay dari perubahan berlaku mundur | Live\* | Selisih sebulan penuh; prorata per periode belum. |
 | PAY-014 | Final pay (pesangon/UPMK/UPH per alasan PHK) | Live | Tabel pesangon/UPMK & faktor alasan terkonfigurasi per tenant (bawaan PP 35/2021); snapshot hitungan penuh, pajak final berlapis, alur draf→final→dibayar (migrasi 014). |
-| PAY-015 | Jurnal payroll per cost center | Belum | Model cost center ada; jurnal belum dibuat. |
+| PAY-015 | Jurnal payroll per cost center | Live | Dihitung live dari snapshot run: per cost center total debit = total kredit (peta akun baku 61xx beban / 21xx hutang), ember "Tanpa cost center", ekspor CSV pemisah titik koma; konektor akuntansi (P2) belum dibuat. |
 | PAY-016 | Simulasi payroll what-if | Belum | |
 
 ## Bagian 12 — Talent Management
@@ -116,10 +116,9 @@ dengan penyederhanaan tercatat. **Belum** = belum dibangun.
 
 ## Sisa pekerjaan non-AI yang masih bisa dibangun
 
-1. **PAY-015** jurnal payroll per cost center (CSV debit=kredit).
-2. **PAY-016** simulasi payroll what-if (tanpa menyentuh data
+1. **PAY-016** simulasi payroll what-if (tanpa menyentuh data
    produksi).
-3. **PRF-005** PIP formal; **REC-008** talent pool kandidat;
+2. **PRF-005** PIP formal; **REC-008** talent pool kandidat;
    **REC-002** halaman karier publik; **REC-006** asesmen mitra;
    **PAY-004/PAY-005** bukti potong non-tetap & DTP.
 
